@@ -65,6 +65,7 @@ object NativeLyricInfoBridge : SystemUIMediaUtils.MediaControllerCallback {
             val pkg = activePackage
             val state = latestState
             if (pkg != null && state != null && canUseFallback(pkg)) {
+                ensureNativeProvider(pkg)
                 LyricDataHub.onPositionChanged(computePosition(state))
                 if (state.state == PlaybackState.STATE_PLAYING) {
                     mainHandler.postDelayed(this, TICK_INTERVAL_MS)
@@ -243,6 +244,7 @@ object NativeLyricInfoBridge : SystemUIMediaUtils.MediaControllerCallback {
             return
         }
 
+        val wasMissing = current == null
         LyricDataHub.onActiveProviderChanged(
             ProviderInfo(
                 providerPackageName = NATIVE_PROVIDER_PREFIX + packageName,
@@ -250,6 +252,12 @@ object NativeLyricInfoBridge : SystemUIMediaUtils.MediaControllerCallback {
                 processName = packageName
             )
         )
+
+        // Central 的异步 null 回调可能在 native 歌词之后到达并重置 UI。
+        // 重新取得 fallback 所有权时重放缓存歌曲即可恢复，无需重新解析 metadata。
+        if (wasMissing && activePackage == packageName) {
+            LyricDataHub.reprocessCurrentSong()
+        }
     }
 
     private fun canUseFallback(packageName: String): Boolean {

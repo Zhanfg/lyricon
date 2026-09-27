@@ -102,6 +102,10 @@ object RuntimeDataProbe {
             subscriberState = subscriberState,
             providerCount = central.providerCount,
             subscriberCount = central.subscriberCount,
+            providerRegistrationAttempts = central.providerRegistrationAttempts,
+            providerRegistrationStage = central.providerRegistrationStage,
+            providerRegistrationErrorCode = central.providerRegistrationErrorCode,
+            providerRegistrationErrorDetail = central.providerRegistrationErrorDetail,
             activeProviderPackage = activeProviderPackage,
             lyricKind = lyricKind,
             lyricSummary = lyricSummary
@@ -122,6 +126,10 @@ object RuntimeDataProbe {
                     " subscriber=" + s.subscriberState +
                     " centralSubscribers=" + s.subscriberCount +
                     " providers=" + s.providerCount +
+                    " registerAttempts=" + s.providerRegistrationAttempts +
+                    " registerStage=" + s.providerRegistrationStage +
+                    " registerError=" + (s.providerRegistrationErrorCode ?: "none") +
+                    " registerDetail=" + (s.providerRegistrationErrorDetail ?: "") +
                     " active=" + (s.activeProviderPackage ?: "none") +
                     " lyric=" + (s.lyricKind ?: "none") +
                     " detail=" + (s.lyricSummary ?: "")
@@ -133,6 +141,10 @@ object RuntimeDataProbe {
         val subscriberState: SubscriberState,
         val providerCount: Int,
         val subscriberCount: Int,
+        val providerRegistrationAttempts: Int,
+        val providerRegistrationStage: String,
+        val providerRegistrationErrorCode: String?,
+        val providerRegistrationErrorDetail: String?,
         val activeProviderPackage: String?,
         val lyricKind: String?,
         val lyricSummary: String?
@@ -146,10 +158,24 @@ object RuntimeDataProbe {
                 SubscriberState.DISCONNECTED -> "S×"
                 SubscriberState.TIMEOUT -> "S!"
             }
+            val registration = when {
+                providerRegistrationAttempts == 0 -> "R0"
+                providerRegistrationErrorCode != null ->
+                    "R!" + providerRegistrationErrorCode
+                else -> when (providerRegistrationStage) {
+                    "INTENT" -> "RI"
+                    "BINDER" -> "RB"
+                    "INFO" -> "RF"
+                    "REGISTERED" -> "RR"
+                    "CALLBACK" -> "RC"
+                    else -> "R?"
+                }
+            }
             val provider = "P" + providerCount
             val active = if (activeProviderPackage != null) "A✓" else "A×"
             val lyric = if (lyricKind != null) "L✓" else "L×"
-            return "UI✓ " + central + " " + subscriber + " " + provider + " " + active + " " + lyric
+            return "UI✓ " + central + " " + subscriber + " " + registration +
+                    " " + provider + " " + active + " " + lyric
         }
     }
 }

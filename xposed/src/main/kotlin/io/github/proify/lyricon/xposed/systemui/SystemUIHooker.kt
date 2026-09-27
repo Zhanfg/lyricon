@@ -7,6 +7,8 @@
 package io.github.proify.lyricon.xposed.systemui
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.ViewGroup
 import androidx.core.view.doOnAttach
 import io.github.proify.android.extensions.deflate
@@ -33,6 +35,7 @@ import io.github.proify.lyricon.xposed.systemui.lyric.LyricDataHub
 import io.github.proify.lyricon.xposed.systemui.lyric.LyricPrefs
 import io.github.proify.lyricon.xposed.systemui.lyric.StatusBarViewController
 import io.github.proify.lyricon.xposed.systemui.lyric.StatusBarViewManager
+import io.github.proify.lyricon.xposed.systemui.lyric.control.LyricControlPopup
 import io.github.proify.lyricon.xposed.systemui.util.CrashDetector
 import io.github.proify.lyricon.xposed.systemui.util.NotificationCoverHelper
 import io.github.proify.lyricon.xposed.systemui.util.SystemUIMediaUtils
@@ -40,7 +43,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * SystemUI Hook 入口对象
@@ -74,8 +80,17 @@ object SystemUIHooker : PackageHooker() {
                 return@doOnAppCreated
             }
             isAppCreated = true
-            YLog.info(TAG, "App created ")
-            onPreLoad()
+            YLog.info(TAG, "App created")
+
+            if (isHotReloadAttach) {
+                // 热重载没有发生 SystemUI 进程崩溃，不应写入 CrashDetector 计数。
+                isSafeMode = false
+                YLog.info(TAG, "API 102 hot reload attach: skip crash accounting")
+                initCrashDataChannel()
+                onAppCreate()
+            } else {
+                onPreLoad()
+            }
         }
     }
 
@@ -248,6 +263,80 @@ object SystemUIHooker : PackageHooker() {
                 if (TEST_CRASH) target.postDelayed({ error("test crash") }, 3000)
             }
         }
+    }
+
+    /**
+     * API 102 热重载前释放旧模块代际持有的所有 SystemUI 长生命周期资源。
+     *
+     * UI 对象必须在主线程同步销毁；只有清理完整结束后才允许框架切换 classloader。
+     */
+    override fun onHotReloadCleanup() {
+        YLog.info(TAG, "Preparing API 102 hot reload")
+
+        // 先停止会继续产生 UI/Hook 回调的入口。
+        StatusBarViewResolver.release()
+        StatusBarDisableHooker.release()
+
+        runOnMainThreadBlocking {
+            LyricControlPopup.dismiss()
+            StatusBarViewManager.destroyAllNow()
+            LyricViewController.destroy()
+        }
+
+        // 再释放依赖于 Controller/LyricView 的监控器。
+        StatusBarColorMonitor.release()
+        OplusCapsuleHooker.release()
+        ViewVisibilityTracker.release()
+        LyricPrefs.release()
+
+        // 媒体与 AI 后台任务可能持有旧模块对象，必须显式断开。
+        NotificationCoverHelper.destroy()
+        SystemUIMediaUtils.release()
+        ScreenStateMonitor.release()
+        AiTranslator.release()
+
+        // 先销毁本进程 Subscriber，再关闭内置 Central 的 Binder 连接。
+        subscriber?.let { current ->
+            runCatching { current.unregister() }
+            runCatching { current.destroy() }
+        }
+        subscriber = null
+        BridgeCentral.release()
+
+        // 最后撤销跨进程广播路由和本代际协程。
+        LyriconBridge.release()
+        mainCoroutineScope.cancel()
+
+        isAppCreated = false
+        isSafeMode = false
+        YLog.info(TAG, "API 102 hot reload cleanup complete")
+    }
+
+    /**
+     * 在主线程同步执行清理，防止 onHotReloading 返回后旧 View 仍留在 SystemUI。
+     */
+    private fun runOnMainThreadBlocking(block: () -> Unit) {
+        if (Looper.myLooper() === Looper.getMainLooper()) {
+            block()
+            return
+        }
+
+        val latch = CountDownLatch(1)
+        var failure: Throwable? = null
+        Handler(Looper.getMainLooper()).post {
+            try {
+                block()
+            } catch (t: Throwable) {
+                failure = t
+            } finally {
+                latch.countDown()
+            }
+        }
+
+        if (!latch.await(5, TimeUnit.SECONDS)) {
+            throw IllegalStateException("Timed out while cleaning SystemUI for hot reload")
+        }
+        failure?.let { throw it }
     }
 
     /**

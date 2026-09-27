@@ -167,6 +167,20 @@ class MainActivity : BaseActivity(), LyriconApp.XposedServiceStateListener {
                     .await()
 
                 viewModel.updateSafeMode(response.getBoolean("result"))
+
+                val runtimeVersionCode = response.getLong("runtime_version_code", 0L)
+                if (runtimeVersionCode == BuildConfig.VERSION_CODE.toLong()) {
+                    // API 102 Hot Reload 已经把当前 APK 代际加载进 SystemUI。
+                    // 此时无需再提示用户手动重启 SystemUI。
+                    saveCurrentVersionCode()
+                    viewModel.setWaitingForReboot(false)
+                } else if (runtimeVersionCode > 0L) {
+                    Log.i(
+                        TAG,
+                        "SystemUI runtime version is stale: runtime=" +
+                                runtimeVersionCode + ", app=" + BuildConfig.VERSION_CODE
+                    )
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "IPC 调用失败: ${e.message}", e)
             }
@@ -195,6 +209,10 @@ class MainActivity : BaseActivity(), LyriconApp.XposedServiceStateListener {
 
     override fun onServiceStateChanged(service: XposedService?) {
         viewModel.isModuleActive.value = service != null
+        if (service != null) {
+            // Xposed 服务恢复后重新核对 SystemUI 中实际运行的模块代际。
+            requestSafeModeCheck()
+        }
     }
 
     /**

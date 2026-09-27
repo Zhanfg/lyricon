@@ -84,6 +84,23 @@ object LyricViewController : ActivePlayerListener,
     }
 
     /**
+     * 释放旧模块代际注册到长期对象上的监听器与主线程任务。
+     */
+    fun destroy() {
+        mainHandler.removeCallbacksAndMessages(null)
+        LyricDataHub.removeListener(this)
+        OplusCapsuleHooker.unregisterListener(this)
+        NotificationCoverHelper.unregisterListener(this)
+        isPlaying = false
+        activePackage = ""
+        currentLogicPosition = 0L
+        currentSong = null
+        lastCoverSignature = 0L
+        LyricPrefs.activePackageName = null
+        YLog.info(TAG, "Destroyed")
+    }
+
+    /**
      * 当歌曲发生切换时回调。
      * @param song 新歌曲对象，若停止播放则为 null
      */

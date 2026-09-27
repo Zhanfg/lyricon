@@ -15,8 +15,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -93,10 +95,25 @@ internal class AiTranslationScheduler(
         }
     }
 
-    /** 停止 pending/running 翻译任务。用于 API 102 热重载。 */
+    /**
+     * 停止 pending/running 翻译任务并等待工作协程真正退出。
+     * 调用方应先关闭底层 HTTP 客户端，使阻塞网络调用尽快解除。
+     */
     fun shutdown() {
         cancelPending()
-        scope.cancel()
+        val rootJob = scope.coroutineContext[Job]
+        runBlocking {
+            rootJob?.cancelAndJoin()
+        }
+
+        synchronized(lock) {
+            jobs.values.forEach { job ->
+                if (!job.deferred.isCompleted) job.deferred.complete(null)
+            }
+            jobs.clear()
+            pending.clear()
+            running = 0
+        }
     }
 
     private fun trimPendingLocked() {

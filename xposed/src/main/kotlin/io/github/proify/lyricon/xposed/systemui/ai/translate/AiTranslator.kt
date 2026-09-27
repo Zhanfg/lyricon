@@ -8,6 +8,7 @@ package io.github.proify.lyricon.xposed.systemui.ai.translate
 
 import android.content.Context
 import android.util.Log
+import io.github.proify.lyricon.lyric.ai.core.AiChatClient
 import io.github.proify.lyricon.lyric.ai.core.AiConfig
 import io.github.proify.lyricon.lyric.model.Song
 import io.github.proify.lyricon.xposed.systemui.ai.translate.AiTranslator.translateSongSync
@@ -15,7 +16,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.runBlocking
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -90,10 +93,20 @@ object AiTranslator {
         cache.clear(callback)
     }
 
-    /** API 102 热重载前停止翻译任务并关闭缓存资源。 */
+    /**
+     * API 102 热重载前停止网络、翻译任务并关闭缓存资源。
+     *
+     * 先关闭 OpenAI/OkHttp 客户端以打断底层阻塞请求，再等待调度器与缓存作用域退出。
+     */
     fun release() {
+        AiChatClient.release()
         scheduler.shutdown()
-        scope.cancel()
+
+        val rootJob = scope.coroutineContext[Job]
+        runBlocking {
+            rootJob?.cancelAndJoin()
+        }
+
         cache.close()
         Log.i(TAG, "Released")
     }

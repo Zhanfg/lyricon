@@ -87,6 +87,25 @@ object SystemUIMediaUtils {
     }
 
     /**
+     * 释放 MediaSessionManager 监听、控制器回调和模块监听器。
+     * API 102 热重载前必须调用，否则系统服务会继续持有旧 classloader 的回调。
+     */
+    fun release() {
+        val manager = mediaSessionManager
+        runCatching {
+            manager?.removeOnActiveSessionsChangedListener(sessionListener)
+        }
+        activeSessions.values.forEach { wrapper ->
+            runCatching { wrapper.release() }
+        }
+        activeSessions.clear()
+        listeners.clear()
+        mainHandler.removeCallbacksAndMessages(null)
+        mediaSessionManager = null
+        Log.i(TAG, "Released")
+    }
+
+    /**
      * 同步并更新当前所有媒体控制器的回调注册状态
      *  @param controllers 当前系统中最新的活跃控制器列表
      */

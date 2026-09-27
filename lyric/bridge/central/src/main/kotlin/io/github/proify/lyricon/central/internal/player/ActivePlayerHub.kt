@@ -187,6 +187,12 @@ internal class ActivePlayerHub : PlayerListener {
         }
     }
 
+    /** 清空监听器与当前活跃播放器状态。 */
+    fun release() {
+        listeners.clear()
+        lock.write { selector.reset() }
+    }
+
     /** 生成该会话在 [isPlaying] 下的完整报告。 */
     private fun PlayerSession.snapshot(isPlaying: Boolean) = ActivePlayerReport(
         providerInfo = providerInfo,

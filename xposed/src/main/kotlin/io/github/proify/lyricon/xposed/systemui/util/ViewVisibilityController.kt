@@ -80,6 +80,24 @@ class ViewVisibilityController(private val rootViewGroup: ViewGroup) {
     }
 
     /**
+     * 恢复本控制器修改过的所有视图并移除追踪标记。
+     * 热重载/控制器销毁时调用，避免旧代际把系统状态栏元素留在隐藏状态。
+     */
+    fun restoreAll() {
+        fun visit(view: View) {
+            if (view.getTag(ViewVisibilityTracker.TRACKING_TAG_ID) != null) {
+                restoreOriginalVisibility(view)
+                ViewVisibilityTracker.clearTracking(view.id)
+                view.setTag(ViewVisibilityTracker.TRACKING_TAG_ID, null)
+            }
+            if (view is ViewGroup) {
+                view.forEach { child -> visit(child) }
+            }
+        }
+        visit(rootViewGroup)
+    }
+
+    /**
      * 根据资源名称递归查找视图
      */
     private fun findViewByResourceName(view: View, targetResourceName: String): View? {

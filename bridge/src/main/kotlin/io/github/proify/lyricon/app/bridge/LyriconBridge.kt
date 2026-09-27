@@ -19,8 +19,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import java.util.concurrent.ConcurrentHashMap
 
@@ -111,7 +113,12 @@ object LyriconBridge {
             runCatching { context.unregisterReceiver(receiver) }
         }
         handlers.clear()
-        bridgeScope.cancel()
+
+        val rootJob = bridgeScope.coroutineContext[Job]
+        runBlocking {
+            rootJob?.cancelAndJoin()
+        }
+
         registeredContext = null
         isInitialized = false
     }

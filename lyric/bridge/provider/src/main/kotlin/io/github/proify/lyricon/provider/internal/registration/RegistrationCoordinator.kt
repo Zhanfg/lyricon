@@ -16,7 +16,6 @@ import io.github.proify.lyricon.provider.ProviderConstants.ACTION_REGISTER_PROVI
 import io.github.proify.lyricon.provider.ProviderConstants.EXTRA_BINDER
 import io.github.proify.lyricon.provider.internal.binding.RegistrationBinder
 import io.github.proify.lyricon.provider.internal.connection.CentralConnection
-import io.github.proify.lyricon.provider.isDisconnected
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -104,10 +103,12 @@ internal class RegistrationCoordinator(
     }
 
     override fun onBootCompleted() {
-        // 中心服务重启：只要提供端仍期望连接且当前未在连接中，就补一次注册。
-        if (wantsConnection && connection.connectionStatus.isDisconnected()) {
-            start()
-        }
+        if (!wantsConnection) return
+
+        // SystemUI 的 API 102 热重载不会触发旧 Central Binder 的 binderDied。
+        // boot 广播本身就是 Central epoch 变化信号：无条件丢弃旧绑定并重新注册。
+        connection.disconnectForCentralRestart()
+        start()
     }
 
     /** 取消当前注册尝试：清空超时与重试、复位期望连接标记，并让迟到回调失效。 */

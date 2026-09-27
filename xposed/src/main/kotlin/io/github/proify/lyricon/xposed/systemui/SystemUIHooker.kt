@@ -26,6 +26,7 @@ import io.github.proify.lyricon.xposed.ModuleEntry
 import io.github.proify.lyricon.xposed.hook.PackageHooker
 import io.github.proify.lyricon.xposed.logger.YLog
 import io.github.proify.lyricon.xposed.systemui.ai.translate.AiTranslator
+import io.github.proify.lyricon.xposed.systemui.diagnostic.RuntimeDataProbe
 import io.github.proify.lyricon.xposed.systemui.hook.OplusCapsuleHooker
 import io.github.proify.lyricon.xposed.systemui.hook.StatusBarColorMonitor
 import io.github.proify.lyricon.xposed.systemui.hook.StatusBarDisableHooker
@@ -188,18 +189,22 @@ object SystemUIHooker : PackageHooker() {
 
         subscriber.addConnectionListener(object : ConnectionListener {
             override fun onConnected(subscriber: LyriconSubscriber) {
+                RuntimeDataProbe.markSubscriberConnected()
                 YLog.info(TAG, "lyriconSubscriber onConnected")
             }
 
             override fun onReconnected(subscriber: LyriconSubscriber) {
+                RuntimeDataProbe.markSubscriberConnected()
                 YLog.info(TAG, "lyriconSubscriber onReconnected")
             }
 
             override fun onDisconnected(subscriber: LyriconSubscriber) {
+                RuntimeDataProbe.markSubscriberDisconnected()
                 YLog.info(TAG, "lyriconSubscriber onDisconnected")
             }
 
             override fun onConnectTimeout(subscriber: LyriconSubscriber) {
+                RuntimeDataProbe.markSubscriberTimeout()
                 YLog.info(TAG, "lyriconSubscriber onConnectTimeout")
             }
 
@@ -208,6 +213,7 @@ object SystemUIHooker : PackageHooker() {
         val registerTask = Runnable {
             subscriberRegisterTask = null
             if (this.subscriber === subscriber) {
+                RuntimeDataProbe.markSubscriberConnecting()
                 subscriber.register()
             }
         }
@@ -316,6 +322,7 @@ object SystemUIHooker : PackageHooker() {
         subscriberRegisterTask = null
         mainHandler.removeCallbacksAndMessages(null)
 
+        RuntimeDataProbe.reset()
         isAppCreated = false
         isSafeMode = false
         YLog.info(TAG, "API 102 hot reload cleanup complete")

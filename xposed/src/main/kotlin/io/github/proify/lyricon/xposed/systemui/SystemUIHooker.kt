@@ -40,12 +40,6 @@ import io.github.proify.lyricon.xposed.systemui.lyric.control.LyricControlPopup
 import io.github.proify.lyricon.xposed.systemui.util.CrashDetector
 import io.github.proify.lyricon.xposed.systemui.util.NotificationCoverHelper
 import io.github.proify.lyricon.xposed.systemui.util.SystemUIMediaUtils
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -63,9 +57,8 @@ object SystemUIHooker : PackageHooker() {
     var subscriber: LyriconSubscriber? = null
         private set
 
-    private val mainCoroutineScope by lazy {
-        CoroutineScope(Dispatchers.Main + SupervisorJob())
-    }
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var subscriberRegisterTask: Runnable? = null
 
     override fun onHook() {
         YLog.info(TAG, "onHook")
@@ -211,10 +204,15 @@ object SystemUIHooker : PackageHooker() {
             }
 
         })
-        mainCoroutineScope.launch {
-            delay(2000)
-            subscriber.register()
+        subscriberRegisterTask?.let(mainHandler::removeCallbacks)
+        val registerTask = Runnable {
+            subscriberRegisterTask = null
+            if (this.subscriber === subscriber) {
+                subscriber.register()
+            }
         }
+        subscriberRegisterTask = registerTask
+        mainHandler.postDelayed(registerTask, 2000L)
     }
 
     private fun initDataChannel() {
@@ -312,9 +310,11 @@ object SystemUIHooker : PackageHooker() {
         subscriber = null
         BridgeCentral.release()
 
-        // 最后撤销跨进程广播路由和本代际协程。
+        // 最后撤销跨进程广播路由，并取消尚未执行的延迟注册。
         LyriconBridge.release()
-        mainCoroutineScope.cancel()
+        subscriberRegisterTask?.let(mainHandler::removeCallbacks)
+        subscriberRegisterTask = null
+        mainHandler.removeCallbacksAndMessages(null)
 
         isAppCreated = false
         isSafeMode = false

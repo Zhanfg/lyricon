@@ -6,10 +6,10 @@
 
 package io.github.proify.lyricon.xposed.systemui.lyric
 
-import android.R.attr.name
 import android.content.SharedPreferences
 import android.os.Looper
 import android.util.Log
+import java.util.concurrent.CopyOnWriteArrayList
 import io.github.proify.lyricon.app.bridge.AppBridge
 import io.github.proify.lyricon.app.bridge.AppBridge.LyricGesturePrefs
 import io.github.proify.lyricon.common.StateSharedPreferences
@@ -33,6 +33,9 @@ object LyricPrefs {
 
     /** 包样式缓存，Key 为包名，Value 为带自动更新机制的 PackageStyle 包装 */
     private val packageStyleCache = mutableMapOf<String, PackageStyleCache>()
+
+    /** 所有 Remote Preferences 包装器，用于 API 102 热重载前统一注销监听。 */
+    private val preferenceWrappers = CopyOnWriteArrayList<StateSharedPreferencesWrapper>()
 
     /** 当前前台应用包名，用于确定生效的包样式 */
     @Volatile
@@ -155,7 +158,7 @@ object LyricPrefs {
         return StateSharedPreferencesWrapper(
             remotePrefs,
             globalSharedPreferenceChangeListener
-        )
+        ).also { preferenceWrappers.add(it) }
     }
 
     /* ---------------- package style cache ---------------- */
@@ -244,6 +247,18 @@ object LyricPrefs {
     fun gestureAction(key: String, default: Int): Int =
         baseStylePrefs.getInt(key, default)
 
+    /**
+     * 注销 Remote Preferences 监听并清理旧代际缓存。
+     */
+    fun release() {
+        preferenceWrappers.forEach { wrapper -> runCatching { wrapper.close() } }
+        preferenceWrappers.clear()
+        prefsCache.clear()
+        packageStyleCache.clear()
+        activePackageName = null
+        Log.i(TAG, "Released")
+    }
+
     /* ---------------- helper classes ---------------- */
 
     /**
@@ -260,16 +275,22 @@ object LyricPrefs {
         /** 偏好是否已变更的标记 */
         private var isChanged = false
 
+        private val changeListener = SharedPreferences.OnSharedPreferenceChangeListener { p, key ->
+            Log.i(
+                TAG,
+                "prefs changed: key=" + key + ", " + Thread.currentThread() + "," + Looper.myLooper()
+            )
+            isChanged = true
+            orderPrefChangeListener.onSharedPreferenceChanged(p, key)
+        }
+
         init {
-            prefs.registerOnSharedPreferenceChangeListener { p, key ->
-                Log.i(
-                    TAG,
-                    "prefs changed: $name, key=$key, ${Thread.currentThread()},${Looper.myLooper()}"
-                )
-                isChanged = true
-                orderPrefChangeListener.onSharedPreferenceChanged(p, key)
-                Log.i(TAG, "called listener $orderPrefChangeListener")
-            }
+            prefs.registerOnSharedPreferenceChangeListener(changeListener)
+        }
+
+        fun close() {
+            prefs.unregisterOnSharedPreferenceChangeListener(changeListener)
+            isChanged = false
         }
 
         override fun hasChanged(): Boolean = isChanged

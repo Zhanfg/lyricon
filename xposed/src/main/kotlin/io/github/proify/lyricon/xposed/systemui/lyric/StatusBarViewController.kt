@@ -13,6 +13,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.widget.TextView
+import android.graphics.Color
+import android.os.Handler
+import android.os.Looper
 import androidx.core.graphics.toColorInt
 import androidx.core.view.doOnAttach
 import androidx.core.view.isVisible
@@ -48,6 +51,17 @@ class StatusBarViewController(
 ) : ScreenStateMonitor.ScreenStateListener {
     companion object {
         const val TAG = "StatusBarViewController"
+
+        private val FALLBACK_CONTAINER_NAMES = arrayOf(
+            "status_bar_left_side",
+            "status_bar_contents",
+            "left_side",
+            "status_bar_left_container",
+            "system_icon_area"
+        )
+
+        private const val SHOW_INJECTION_PROBE = true
+        private const val PROBE_DURATION_MS = 8000L
     }
 
     val context: Context = statusBarView.context.applicationContext
@@ -68,6 +82,8 @@ class StatusBarViewController(
     private var colorMonitorView: View? = null
     private var coverColorPaletteResult: ColorPaletteResult? = null
     private var systemStatusBarColor: SystemStatusBarColor? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var injectionProbe: TextView? = null
 
     private val colorChangeListener = object : OnColorChangeListener {
 
@@ -118,6 +134,11 @@ class StatusBarViewController(
         lyricView.setOnClickListener(null)
         LyricControlPopup.dismissIfOwnedBy(lyricView)
         lyricView.release()
+        mainHandler.removeCallbacksAndMessages(null)
+        injectionProbe?.let { probe ->
+            (probe.parent as? ViewGroup)?.removeView(probe)
+        }
+        injectionProbe = null
         visibilityController.restoreAll()
         lastHighlightView?.background = null
         lastHighlightView = null
@@ -225,44 +246,246 @@ class StatusBarViewController(
      * 处理视图注入逻辑：根据 BasicStyle 寻找锚点并插入歌词视图
      */
     private fun updateLocation(baseStyle: BasicStyle) {
-        val anchor = baseStyle.anchor
-        val anchorId = context.resources.getIdentifier(anchor, "id", context.packageName)
-        val anchorView = statusBarView.findViewById<View>(anchorId) ?: return run {
-            YLog.error(TAG, "Lyric anchor view $anchor not found")
+        val anchor = resolveAnchorView(baseStyle.anchor)
+
+        if (anchor != null) {
+            injectRelativeToAnchor(anchor, baseStyle)
+            return
         }
 
-        val anchorParent = anchorView.parent as? ViewGroup ?: return run {
-            YLog.error(TAG, "Lyric anchor parent not found")
+        val container = findFallbackContainer()
+        if (container != null) {
+            injectIntoContainer(container, baseStyle)
+            return
         }
 
-        // 标记内部移除，避免触发冗余的 detach 逻辑
+        YLog.error(
+            TAG,
+            "No lyric anchor/container found. requested=" + baseStyle.anchor +
+                    ", root=" + statusBarView.javaClass.name
+        )
+    }
+
+    private fun resolveAnchorView(anchorName: String): View? {
+        val packages = linkedSetOf(
+            statusBarView.context.packageName,
+            context.packageName,
+            "com.android.systemui"
+        )
+
+        packages.forEach { pkg ->
+            val id = runCatching {
+                statusBarView.resources.getIdentifier(anchorName, "id", pkg)
+            }.getOrDefault(0)
+            if (id != 0) {
+                statusBarView.findViewById<View>(id)?.let { view ->
+                    YLog.info(
+                        TAG,
+                        "Anchor resolved by id: name=" + anchorName +
+                                " pkg=" + pkg + " class=" + view.javaClass.name
+                    )
+                    return view
+                }
+            }
+        }
+
+        ClockViewFinder.find(statusBarView)?.let { clock ->
+            YLog.warning(
+                TAG,
+                "Configured anchor '" + anchorName +
+                        "' unavailable; using clock fallback: " + clock.javaClass.name
+            )
+            return clock
+        }
+
+        YLog.warning(TAG, "Anchor and compatible clock view not found: " + anchorName)
+        return null
+    }
+
+    private fun injectRelativeToAnchor(anchorView: View, baseStyle: BasicStyle) {
+        val anchorParent = anchorView.parent as? ViewGroup ?: run {
+            YLog.error(TAG, "Lyric anchor parent not found: " + anchorView.javaClass.name)
+            return
+        }
+
         internalRemoveLyricViewFlag = true
+        try {
+            (lyricView.parent as? ViewGroup)?.removeView(lyricView)
 
-        (lyricView.parent as? ViewGroup)?.removeView(lyricView)
+            val anchorIndex = anchorParent.indexOfChild(anchorView)
+            if (anchorIndex < 0) {
+                YLog.error(TAG, "Resolved anchor is not a child of its parent")
+                return
+            }
 
-        val anchorIndex = anchorParent.indexOfChild(anchorView)
+            val lp = lyricView.layoutParams ?: createLyricLayoutParams(baseStyle)
+            val targetIndex =
+                if (baseStyle.insertionOrder == BasicStyle.INSERTION_ORDER_AFTER) anchorIndex + 1
+                else anchorIndex
 
-        val lp = lyricView.layoutParams ?: run {
-            val width = baseStyle.getAutoWidth(
-                context.isLandScape(),
-                isOplusCapsuleShowing = OplusCapsuleHooker.isShowing
-            ).dp
+            anchorParent.addView(
+                lyricView,
+                targetIndex.coerceIn(0, anchorParent.childCount),
+                lp
+            )
+            finishInjection(
+                baseStyle = baseStyle,
+                mode = "anchor",
+                target = anchorView,
+                parent = anchorParent
+            )
+        } finally {
+            internalRemoveLyricViewFlag = false
+        }
+    }
 
-            ViewGroup.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT)
+    private fun injectIntoContainer(container: ViewGroup, baseStyle: BasicStyle) {
+        internalRemoveLyricViewFlag = true
+        try {
+            (lyricView.parent as? ViewGroup)?.removeView(lyricView)
+            val lp = lyricView.layoutParams ?: createLyricLayoutParams(baseStyle)
+            container.addView(lyricView, container.childCount, lp)
+            finishInjection(
+                baseStyle = baseStyle,
+                mode = "container",
+                target = container,
+                parent = container
+            )
+        } finally {
+            internalRemoveLyricViewFlag = false
+        }
+    }
+
+    private fun createLyricLayoutParams(baseStyle: BasicStyle): ViewGroup.LayoutParams {
+        val width = baseStyle.getAutoWidth(
+            context.isLandScape(),
+            isOplusCapsuleShowing = OplusCapsuleHooker.isShowing
+        ).dp
+        return ViewGroup.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT)
+    }
+
+    private fun finishInjection(
+        baseStyle: BasicStyle,
+        mode: String,
+        target: View,
+        parent: ViewGroup
+    ) {
+        lyricView.updateVisibility()
+        lastAnchor = baseStyle.anchor
+        lastInsertionOrder = baseStyle.insertionOrder
+
+        YLog.info(
+            TAG,
+            "Lyric injected: mode=" + mode +
+                    " requested=" + baseStyle.anchor +
+                    " target=" + target.javaClass.name +
+                    " parent=" + parent.javaClass.name +
+                    " attached=" + lyricView.isAttachedToWindow
+        )
+
+        if (SHOW_INJECTION_PROBE) {
+            showInjectionProbe(parent)
+        }
+    }
+
+    @SuppressLint("DiscouragedApi")
+    private fun findFallbackContainer(): ViewGroup? {
+        val packages = linkedSetOf(
+            statusBarView.context.packageName,
+            context.packageName,
+            "com.android.systemui"
+        )
+
+        FALLBACK_CONTAINER_NAMES.forEach { name ->
+            packages.forEach { pkg ->
+                val id = runCatching {
+                    statusBarView.resources.getIdentifier(name, "id", pkg)
+                }.getOrDefault(0)
+                if (id != 0) {
+                    (statusBarView.findViewById<View>(id) as? ViewGroup)?.let { container ->
+                        YLog.warning(
+                            TAG,
+                            "Using fallback status bar container: name=" + name +
+                                    " pkg=" + pkg + " class=" + container.javaClass.name
+                        )
+                        return container
+                    }
+                }
+            }
         }
 
-        // 执行插入：在前或在后
-        val targetIndex =
-            if (baseStyle.insertionOrder == BasicStyle.INSERTION_ORDER_AFTER) anchorIndex + 1
-            else anchorIndex
-        anchorParent.addView(lyricView, targetIndex, lp)
+        return findContainerByResourceName(statusBarView)
+    }
 
-        lyricView.updateVisibility()
-        lastAnchor = anchor
-        lastInsertionOrder = baseStyle.insertionOrder
-        internalRemoveLyricViewFlag = false
+    private fun findContainerByResourceName(root: ViewGroup): ViewGroup? {
+        for (index in 0 until root.childCount) {
+            val child = root.getChildAt(index)
+            if (child is ViewGroup) {
+                val entry = runCatching {
+                    if (child.id == View.NO_ID) null
+                    else child.resources.getResourceEntryName(child.id)
+                }.getOrNull().orEmpty()
 
-        YLog.info(TAG, "Lyric injected: anchor $anchor, index $targetIndex")
+                if (
+                    entry.contains("status_bar", ignoreCase = true) &&
+                    (
+                        entry.contains("left", ignoreCase = true) ||
+                        entry.contains("content", ignoreCase = true)
+                    )
+                ) {
+                    YLog.warning(
+                        TAG,
+                        "Using discovered status bar container: " + entry +
+                                " / " + child.javaClass.name
+                    )
+                    return child
+                }
+
+                findContainerByResourceName(child)?.let { return it }
+            }
+        }
+        return null
+    }
+
+    private fun showInjectionProbe(parent: ViewGroup) {
+        val old = injectionProbe
+        if (old?.parent != null) {
+            (old.parent as? ViewGroup)?.removeView(old)
+        }
+
+        val probe = TextView(parent.context).apply {
+            text = "LC✓"
+            textSize = 10f
+            setTextColor(Color.WHITE)
+            setPadding(4.dp, 0, 4.dp, 0)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(0xCC2E7D32.toInt())
+                cornerRadius = 6.dp.toFloat()
+            }
+            isClickable = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+
+        injectionProbe = probe
+        runCatching {
+            parent.addView(
+                probe,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+            mainHandler.postDelayed({
+                if (injectionProbe === probe) {
+                    (probe.parent as? ViewGroup)?.removeView(probe)
+                    injectionProbe = null
+                }
+            }, PROBE_DURATION_MS)
+        }.onFailure { error ->
+            YLog.error(TAG, "Failed to show injection probe", error)
+            injectionProbe = null
+        }
     }
 
     fun checkLyricViewExists() {

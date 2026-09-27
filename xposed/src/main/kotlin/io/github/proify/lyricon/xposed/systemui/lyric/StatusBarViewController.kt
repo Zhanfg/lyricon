@@ -117,6 +117,7 @@ class StatusBarViewController(
         lyricView.gestureListener = null
         lyricView.setOnClickListener(null)
         LyricControlPopup.dismissIfOwnedBy(lyricView)
+        lyricView.release()
         visibilityController.restoreAll()
         lastHighlightView?.background = null
         lastHighlightView = null

@@ -75,6 +75,19 @@ object OplusCapsuleHooker {
             })
     }
 
+    /**
+     * API 102 热重载前释放旧代际 Hook、Handler 与监听器。
+     */
+    fun release() {
+        unhookHandle?.unhook()
+        unhookHandle = null
+        currentHook?.cleanup()
+        currentHook = null
+        listeners.clear()
+        isShowing = false
+        lastIsShowing = null
+    }
+
     fun registerListener(listener: CapsuleStateChangeListener): Boolean = listeners.add(listener)
     fun unregisterListener(listener: CapsuleStateChangeListener): Boolean =
         listeners.remove(listener)

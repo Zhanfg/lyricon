@@ -94,6 +94,16 @@ internal class CentralConnection(
         transition(ConnectionTrigger.USER_DISCONNECT)
     }
 
+    /**
+     * Central 宣布重新启动/换代时主动丢弃旧 Binder。
+     *
+     * API 102 热重载不会杀死 SystemUI 进程，旧 Binder 可能仍报告 alive；
+     * 因此不能依赖 binderDied，必须显式 PREEMPT 后重新注册。
+     */
+    fun disconnectForCentralRestart() {
+        transition(ConnectionTrigger.PREEMPT)
+    }
+
     /** 接收中心服务返回的远端服务 Binder。 */
     override fun onRemoteService(service: IRemoteService?): Boolean {
         if (ProviderConstants.DEBUG) Log.d(TAG, "Bind remote service")

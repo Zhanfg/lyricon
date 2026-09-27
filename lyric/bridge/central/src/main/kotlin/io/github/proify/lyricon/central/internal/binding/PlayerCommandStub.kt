@@ -24,11 +24,11 @@ import io.github.proify.lyricon.provider.ProviderInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.decodeFromStream
 import java.util.concurrent.atomic.AtomicBoolean
@@ -48,7 +48,6 @@ internal class PlayerCommandStub(
     private val session = PlayerSession(info)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val closed = AtomicBoolean(false)
-    private val closeMutex = Mutex()
     private val positionTracker = PlaybackStateTracker()
     private val positionMemory = PositionMemoryChannel(info)
     private val positionTicker = PositionTicker(
@@ -73,19 +72,24 @@ internal class PlayerCommandStub(
         }
     }
 
-    /** 关闭命令桩：停止轮询、释放共享内存与协程作用域。 */
+    /**
+     * 关闭命令桩：同步停止轮询/歌曲解码协程并释放共享内存。
+     *
+     * API 102 热重载要求旧模块线程在 onHotReloading 返回前退出，因此这里不能再
+     * fire-and-forget 启动一个关闭协程。
+     */
     fun close() {
         if (!closed.compareAndSet(false, true)) return
         ScreenStateMonitor.removeListener(this)
         stopPositionUpdate()
-
         songQueue.cancel()
-        scope.launch {
-            closeMutex.withLock {
-                positionMemory.close()
-                scope.cancel()
-            }
+
+        val rootJob = scope.coroutineContext[Job]
+        runBlocking {
+            rootJob?.cancelAndJoin()
         }
+
+        positionMemory.close()
     }
 
     override fun onScreenOn() {

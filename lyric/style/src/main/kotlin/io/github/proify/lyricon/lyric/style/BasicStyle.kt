@@ -14,9 +14,11 @@ import io.github.proify.android.extensions.toJson
 import io.github.proify.lyricon.lyric.style.BasicStyle.Companion.STATUS_COLOR_STRATEGY_COMPAT
 import io.github.proify.lyricon.lyric.style.BasicStyle.Companion.STATUS_COLOR_STRATEGY_PRECISE
 import io.github.proify.lyricon.lyric.style.TextStyle.Companion.KEY_AI_TRANSLATION_ENABLED
+import io.github.proify.lyricon.lyric.style.TextStyle.Companion.KEY_TRANSLATION_ENGINE
 import io.github.proify.lyricon.lyric.style.TextStyle.Companion.KEY_AI_TRANSLATION_IGNORE_CHINESE
 import io.github.proify.lyricon.lyric.style.TextStyle.Companion.KEY_AI_TRANSLATION_PROMPT
 import io.github.proify.lyricon.lyric.style.TextStyle.Companion.KEY_AI_TRANSLATION_TARGET_LANGUAGE
+import io.github.proify.lyricon.lyric.style.TextStyle.Companion.KEY_AI_TRANSLATION_TARGET_LANGUAGE_CODE
 import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.Serializable
@@ -56,8 +58,10 @@ data class BasicStyle(
     var blockedWordsRegexString: String = Defaults.BLOCKED_WORDS_REGEX,
     var chineseConversionMode: Int = Defaults.CHINESE_CONVERSION_MODE,
 
+    var translationEngine: String = TextStyle.Defaults.TRANSLATION_ENGINE,
     var isAiTranslationEnable: Boolean = false,
     var aiTranslationTargetLanguage: String = TextStyle.Defaults.AI_TRANSLATION_TARGET_LANGUAGE_DISPLAY_NAME,
+    var translationTargetLanguageCode: String = "",
     var aiTranslationPrompt: String = TextStyle.Defaults.AI_TRANSLATION_PROMPT,
     var isAiTranslationAutoIgnoreChinese: Boolean = false,
 
@@ -175,16 +179,29 @@ data class BasicStyle(
             Defaults.CHINESE_CONVERSION_MODE
         )
 
-        isAiTranslationEnable =
-            preferences.getBoolean(
-                KEY_AI_TRANSLATION_ENABLED,
-                TextStyle.Defaults.AI_TRANSLATION_ENABLED
-            )
+        val legacyAiEnabled = preferences.getBoolean(
+            KEY_AI_TRANSLATION_ENABLED,
+            TextStyle.Defaults.AI_TRANSLATION_ENABLED
+        )
+        translationEngine = preferences.getString(KEY_TRANSLATION_ENGINE, null)
+            ?: if (legacyAiEnabled) {
+                TextStyle.TRANSLATION_ENGINE_AI
+            } else {
+                TextStyle.Defaults.TRANSLATION_ENGINE
+            }
+        isAiTranslationEnable = translationEngine == TextStyle.TRANSLATION_ENGINE_AI
+
         aiTranslationTargetLanguage =
             preferences.getString(
                 KEY_AI_TRANSLATION_TARGET_LANGUAGE,
                 TextStyle.Defaults.AI_TRANSLATION_TARGET_LANGUAGE_DISPLAY_NAME
             ) ?: TextStyle.Defaults.AI_TRANSLATION_TARGET_LANGUAGE_DISPLAY_NAME
+        translationTargetLanguageCode =
+            preferences.getString(
+                KEY_AI_TRANSLATION_TARGET_LANGUAGE_CODE,
+                ""
+            ).orEmpty()
+
         aiTranslationPrompt =
             preferences.getString(
                 KEY_AI_TRANSLATION_PROMPT,
@@ -226,8 +243,13 @@ data class BasicStyle(
 
         editor.putInt("lyric_style_base_chinese_conversion_mode", chineseConversionMode)
 
-        editor.putBoolean(KEY_AI_TRANSLATION_ENABLED, isAiTranslationEnable)
+        editor.putString(KEY_TRANSLATION_ENGINE, translationEngine)
+        editor.putBoolean(
+            KEY_AI_TRANSLATION_ENABLED,
+            translationEngine == TextStyle.TRANSLATION_ENGINE_AI
+        )
         editor.putString(KEY_AI_TRANSLATION_TARGET_LANGUAGE, aiTranslationTargetLanguage)
+        editor.putString(KEY_AI_TRANSLATION_TARGET_LANGUAGE_CODE, translationTargetLanguageCode)
         editor.putString(KEY_AI_TRANSLATION_PROMPT, aiTranslationPrompt)
         editor.putBoolean(KEY_AI_TRANSLATION_IGNORE_CHINESE, isAiTranslationAutoIgnoreChinese)
     }

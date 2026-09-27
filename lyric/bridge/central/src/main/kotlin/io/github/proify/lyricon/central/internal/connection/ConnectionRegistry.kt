@@ -48,6 +48,9 @@ internal class ConnectionRegistry<K, C : RemoteConnection<K>> {
     /** 查询连接。 */
     fun get(key: K): C? = connections[key]
 
+    /** 当前存活连接数量。仅用于运行时诊断。 */
+    fun size(): Int = connections.size
+
     /** 关闭并移除全部连接。用于 Central 热重载/关闭。 */
     fun clear() {
         val snapshot = connections.values.toList()

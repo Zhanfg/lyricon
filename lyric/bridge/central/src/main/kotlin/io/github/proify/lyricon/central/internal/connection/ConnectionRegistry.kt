@@ -47,4 +47,14 @@ internal class ConnectionRegistry<K, C : RemoteConnection<K>> {
 
     /** 查询连接。 */
     fun get(key: K): C? = connections[key]
+
+    /** 关闭并移除全部连接。用于 Central 热重载/关闭。 */
+    fun clear() {
+        val snapshot = connections.values.toList()
+        connections.clear()
+        snapshot.forEach { connection ->
+            connection.setDeathRecipient(null)
+            runCatching { connection.close() }
+        }
+    }
 }

@@ -22,6 +22,7 @@ import io.github.proify.lyricon.common.util.ViewHierarchyParser
 import io.github.proify.lyricon.subscriber.ConnectionListener
 import io.github.proify.lyricon.subscriber.LyriconFactory
 import io.github.proify.lyricon.subscriber.LyriconSubscriber
+import io.github.proify.lyricon.xposed.BuildConfig
 import io.github.proify.lyricon.xposed.ModuleEntry
 import io.github.proify.lyricon.xposed.hook.PackageHooker
 import io.github.proify.lyricon.xposed.logger.YLog
@@ -367,6 +368,8 @@ object SystemUIHooker : PackageHooker() {
             onQuery(AppBridgeConstants.REQUEST_CHECK_SAFE_MODE) {
                 reply(Bundle().apply {
                     putBoolean("result", isSafeMode)
+                    putLong("runtime_version_code", BuildConfig.APP_VERSION_CODE)
+                    putString("runtime_version_name", BuildConfig.APP_VERSION_NAME)
                 })
             }
         }

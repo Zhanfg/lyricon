@@ -33,6 +33,7 @@ import io.github.proify.lyricon.xposed.systemui.hook.StatusBarViewResolver
 import io.github.proify.lyricon.xposed.systemui.hook.ViewVisibilityTracker
 import io.github.proify.lyricon.xposed.systemui.lyric.LyricDataHub
 import io.github.proify.lyricon.xposed.systemui.lyric.LyricPrefs
+import io.github.proify.lyricon.xposed.systemui.lyric.LyricViewController
 import io.github.proify.lyricon.xposed.systemui.lyric.StatusBarViewController
 import io.github.proify.lyricon.xposed.systemui.lyric.StatusBarViewManager
 import io.github.proify.lyricon.xposed.systemui.lyric.control.LyricControlPopup

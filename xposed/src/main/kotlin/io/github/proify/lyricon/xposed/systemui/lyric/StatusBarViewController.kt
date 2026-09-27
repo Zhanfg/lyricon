@@ -117,6 +117,10 @@ class StatusBarViewController(
         lyricView.gestureListener = null
         lyricView.setOnClickListener(null)
         LyricControlPopup.dismissIfOwnedBy(lyricView)
+        visibilityController.restoreAll()
+        lastHighlightView?.background = null
+        lastHighlightView = null
+        (lyricView.parent as? ViewGroup)?.removeView(lyricView)
         StatusBarColorMonitor.removeListener(colorChangeListener)
         colorMonitorView?.let { StatusBarColorMonitor.unbindClockView(it) }
         colorMonitorView = null

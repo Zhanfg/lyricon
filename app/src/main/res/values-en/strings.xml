@@ -38,9 +38,9 @@
     <string name="activity_basic_settings">Basic Settings</string>
     <string name="activity_app_style_manager">App style manager</string>
     <string name="activity_lyric_provider_services">Lyric Providers</string>
-    <string name="activity_ai_laboratory">AI Laboratory</string>
-    <string name="item_ai_laboratory">AI Laboratory</string>
-    <string name="item_summary_ai_laboratory">Configure AI translation and lyric explanation</string>
+    <string name="activity_ai_laboratory">AI &amp; Translation</string>
+    <string name="item_ai_laboratory">AI &amp; Translation</string>
+    <string name="item_summary_ai_laboratory">Google / Microsoft / AI translation and lyric explanation</string>
     <string name="activity_open_source_licenses">Open-source licenses</string>
     <string name="item_basic_settings">Basic settings</string>
     <string name="item_summary_basic_settings">Set lyric position, size and status-bar display rules</string>

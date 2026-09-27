@@ -73,6 +73,19 @@ object NotificationCoverHelper {
     /** 按包名管理各自的封面写入器，线程安全 */
     private val sessionWriters = ConcurrentHashMap<String, SessionCoverWriter>()
 
+    /** 保留媒体回调实例，便于热重载时从 SystemUIMediaUtils 注销。 */
+    private val mediaCallback = object : SystemUIMediaUtils.MediaControllerCallback {
+        override fun onMediaChanged(controller: MediaController, metadata: MediaMetadata) {
+            val packageName = controller.packageName ?: return
+            getOrCreateWriter(packageName).onMetadataChanged(metadata)
+        }
+
+        override fun onSessionDestroyed(controller: MediaController) {
+            val packageName = controller.packageName ?: return
+            sessionWriters.remove(packageName)
+        }
+    }
+
     // -------------------------------------------------------------------------
     // 公开 API
     // -------------------------------------------------------------------------
@@ -95,17 +108,7 @@ object NotificationCoverHelper {
     fun initialize() {
         if (!initialized.compareAndSet(false, true)) return
 
-        SystemUIMediaUtils.registerListener(object : SystemUIMediaUtils.MediaControllerCallback {
-            override fun onMediaChanged(controller: MediaController, metadata: MediaMetadata) {
-                val packageName = controller.packageName ?: return
-                getOrCreateWriter(packageName).onMetadataChanged(metadata)
-            }
-
-            override fun onSessionDestroyed(controller: MediaController) {
-                val packageName = controller.packageName ?: return
-                sessionWriters.remove(packageName)
-            }
-        })
+        SystemUIMediaUtils.registerListener(mediaCallback)
     }
 
     /**
@@ -145,8 +148,12 @@ object NotificationCoverHelper {
      * 通常在 Xposed 模块卸载或宿主进程终止时调用。
      */
     fun destroy() {
+        SystemUIMediaUtils.unregisterListener(mediaCallback)
         scope.cancel()
         sessionWriters.clear()
+        updateListeners.clear()
+        initialized.set(false)
+        Log.i(TAG, "Destroyed")
     }
 
     // -------------------------------------------------------------------------

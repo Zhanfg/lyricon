@@ -7,7 +7,7 @@
 package io.github.proify.lyricon.xposed.systemui.diagnostic
 
 import io.github.proify.lyricon.central.BridgeCentral
-import io.github.proify.lyricon.provider.ProviderInfo
+import io.github.proify.lyricon.subscriber.ProviderInfo
 import io.github.proify.lyricon.xposed.logger.YLog
 
 /**

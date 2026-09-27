@@ -55,6 +55,19 @@ object BridgeCentral {
         )
     }
 
+    data class Diagnostics(
+        val initialized: Boolean,
+        val providerCount: Int,
+        val subscriberCount: Int
+    )
+
+    /** 只读运行时诊断快照，不修改 Central 状态。 */
+    fun diagnostics(): Diagnostics = Diagnostics(
+        initialized = context != null,
+        providerCount = CentralRuntime.providerCount(),
+        subscriberCount = CentralRuntime.subscriberCount()
+    )
+
     /**
      * 发送中央启动完成广播。
      *

@@ -108,8 +108,10 @@ object NativeLyricInfoBridge : SystemUIMediaUtils.MediaControllerCallback {
     override fun onMediaChanged(controller: MediaController, metadata: MediaMetadata) {
         val packageName = controller.packageName ?: return
 
-        val lyricInfo = runCatching { metadata.getString(KEY_LYRIC_INFO) }
-            .getOrNull()
+        val lyricInfo = runCatching {
+            metadata.getString(KEY_LYRIC_INFO)
+                ?: metadata.getText(KEY_LYRIC_INFO)?.toString()
+        }.getOrNull()
             ?.takeIf { it.isNotBlank() }
 
         if (lyricInfo == null) {
@@ -505,8 +507,7 @@ object NativeLyricInfoBridge : SystemUIMediaUtils.MediaControllerCallback {
             val lineEnd = sequenceOf(
                 explicitLineEnd,
                 words.lastOrNull()?.end,
-                nextLineBegin,
-                lineBegin + 5_000L
+                nextLineBegin
             ).filterNotNull()
                 .filter { it > lineBegin }
                 .minOrNull()

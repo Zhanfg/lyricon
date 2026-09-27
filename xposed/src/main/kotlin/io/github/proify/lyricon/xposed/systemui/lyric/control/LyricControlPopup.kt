@@ -312,6 +312,9 @@ object LyricControlPopup : ActivePlayerListener, NotificationCoverHelper.OnCover
         mainHandler.removeCallbacksAndMessages(null)
 
         val window = popup
+        val root = panel
+        root?.let(::cancelAnimationsRecursively)
+
         popup = null
         panel = null
         anchorView = null
@@ -324,6 +327,17 @@ object LyricControlPopup : ActivePlayerListener, NotificationCoverHelper.OnCover
                 if (window.isShowing) window.dismiss()
             }.onFailure { error ->
                 YLog.error(TAG, "Immediate popup destroy failed", error)
+            }
+        }
+    }
+
+    /** 递归停止 ViewPropertyAnimator，避免已 detach 的子 View 继续持有旧代际回调。 */
+    private fun cancelAnimationsRecursively(view: View) {
+        view.animate().setListener(null).cancel()
+        view.clearAnimation()
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                cancelAnimationsRecursively(view.getChildAt(index))
             }
         }
     }

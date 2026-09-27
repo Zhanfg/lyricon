@@ -14,6 +14,7 @@ import io.github.libxposed.api.XposedModule
 import io.github.proify.lyricon.lyric.style.BasicStyle
 import io.github.proify.lyricon.xposed.logger.YLog
 import java.lang.ref.WeakReference
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * 精准策略(默认):按时钟类动态 hook
@@ -51,6 +52,9 @@ class PreciseClockColorStrategy : StatusColorStrategy {
     /** 已按类 hook 过的类名集合(防止重复 hook) */
     private val hookedClasses = HashSet<String>()
 
+    /** 当前策略安装的 Hook 句柄，切换策略/热重载时必须释放。 */
+    private val hookHandles = CopyOnWriteArrayList<XposedInterface.HookHandle>()
+
     override fun onActivate(
         module: XposedModule,
         classLoader: ClassLoader,
@@ -64,10 +68,13 @@ class PreciseClockColorStrategy : StatusColorStrategy {
     }
 
     override fun onDeactivate() {
-        // 无需撤销:本策略的 hook 按类安装且只在精准模式下使用,
-        // 类方法不存在交叉场景;重激活时按需重新安装
+        hookHandles.forEach { handle -> runCatching { handle.unhook() } }
+        hookHandles.clear()
+        synchronized(hookedClasses) { hookedClasses.clear() }
+        clockView = null
         module = null
         emit = null
+        YLog.info(TAG, "Hooks removed")
     }
 
     override fun onBindStatusBar(root: ViewGroup?) = Unit
@@ -121,7 +128,7 @@ class PreciseClockColorStrategy : StatusColorStrategy {
         methods.forEach { method ->
             try {
                 @Suppress("ObjectLiteralToLambda")
-                module.hook(method).intercept(object : XposedInterface.Hooker {
+                val handle = module.hook(method).intercept(object : XposedInterface.Hooker {
                     override fun intercept(chain: XposedInterface.Chain): Any? {
                         chain.proceed()
                         try {
@@ -138,6 +145,7 @@ class PreciseClockColorStrategy : StatusColorStrategy {
                         return null
                     }
                 })
+                hookHandles.add(handle)
             } catch (t: Throwable) {
                 YLog.warning(TAG, "Hook $className#${method.name} failed")
             }

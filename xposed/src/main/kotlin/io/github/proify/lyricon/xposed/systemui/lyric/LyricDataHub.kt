@@ -10,6 +10,7 @@ import android.util.Log
 import io.github.proify.lyricon.lyric.model.Song
 import io.github.proify.lyricon.subscriber.ActivePlayerListener
 import io.github.proify.lyricon.subscriber.ProviderInfo
+import io.github.proify.lyricon.xposed.systemui.diagnostic.RuntimeDataProbe
 import io.github.proify.lyricon.xposed.systemui.lyric.processor.LyricDataProcessor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -139,6 +140,10 @@ object LyricDataHub : ActivePlayerListener {
     // --- ActivePlayerListener 触发点 ---
 
     override fun onSongChanged(song: Song?) {
+        RuntimeDataProbe.markSong(
+            name = song?.name,
+            lyricCount = song?.lyrics?.size ?: 0
+        )
         this.cachedRawSong = song?.deepCopy()
         runProcessingPipeline(song)
     }
@@ -157,6 +162,7 @@ object LyricDataHub : ActivePlayerListener {
     // --- 纯状态透传 (不涉及加工) ---
 
     override fun onReceiveText(text: String?) {
+        RuntimeDataProbe.markText(text)
         listeners.forEach { it.onReceiveText(text) }
     }
 
@@ -181,6 +187,7 @@ object LyricDataHub : ActivePlayerListener {
     }
 
     override fun onActiveProviderChanged(providerInfo: ProviderInfo?) {
+        RuntimeDataProbe.markActiveProvider(providerInfo)
         this.providerInfo = providerInfo
         listeners.forEach { it.onActiveProviderChanged(providerInfo) }
     }

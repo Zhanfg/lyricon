@@ -299,6 +299,35 @@ object LyricControlPopup : ActivePlayerListener, NotificationCoverHelper.OnCover
         }
     }
 
+    /**
+     * 热重载专用：立即销毁，不播放退场动画，也不保留任何延迟回调。
+     *
+     * 必须在主线程调用。
+     */
+    @JvmStatic
+    fun destroyForHotReload() {
+        LyricDataHub.removeListener(this)
+        SystemUIMediaUtils.unregisterListener(mediaCallback)
+        NotificationCoverHelper.unregisterListener(this)
+        mainHandler.removeCallbacksAndMessages(null)
+
+        val window = popup
+        popup = null
+        panel = null
+        anchorView = null
+        dismissing = false
+
+        if (window != null) {
+            // 避免 PopupWindow 的 onDismiss 再触发旧模块回调。
+            window.setOnDismissListener(null)
+            runCatching {
+                if (window.isShowing) window.dismiss()
+            }.onFailure { error ->
+                YLog.error(TAG, "Immediate popup destroy failed", error)
+            }
+        }
+    }
+
     /** 当前是否有控制窗口正在显示。 */
     @JvmStatic
     val isShowing: Boolean get() = popup?.isShowing == true

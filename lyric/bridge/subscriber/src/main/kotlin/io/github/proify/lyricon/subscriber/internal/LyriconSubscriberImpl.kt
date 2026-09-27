@@ -183,13 +183,17 @@ internal class LyriconSubscriberImpl(
         }
 
         override fun onBootCompleted() {
-            // 中心服务重启：仍期望连接且当前不在连接中时补一次注册。
-            if (wantsConnection &&
-                status != SubscriberStatus.CONNECTED &&
-                status != SubscriberStatus.CONNECTING
-            ) {
-                start(manual = false)
+            if (!wantsConnection || destroyed.get()) return
+
+            // 与 Provider 一致：Central boot 是 epoch 变化，不依赖 binderDied。
+            // API 102 原地热重载时旧 Binder 可能仍 alive，必须显式丢弃再注册。
+            if (status == SubscriberStatus.CONNECTED || status == SubscriberStatus.CONNECTING) {
+                this@LyriconSubscriberImpl.disconnect(
+                    remote = true,
+                    notifyRemote = false
+                )
             }
+            start(manual = false)
         }
 
         /** 结束当前尝试但保留期望连接（远端断开/超时等非用户路径）。 */

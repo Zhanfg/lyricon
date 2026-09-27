@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.withTimeout
 import java.util.concurrent.ConcurrentHashMap
 
@@ -74,6 +75,9 @@ object LyriconBridge {
     @Volatile
     private var isInitialized = false
 
+    @Volatile
+    private var registeredContext: Context? = null
+
     /**
      * 初始化并注册路由。
      * @param context 上下文
@@ -82,16 +86,34 @@ object LyriconBridge {
     fun routing(context: Context, block: BridgeRoutingScope.() -> Unit) {
         if (!isInitialized) synchronized(this) {
             if (!isInitialized) {
+                val appContext = context.applicationContext
                 ContextCompat.registerReceiver(
-                    context.applicationContext,
+                    appContext,
                     receiver,
                     IntentFilter(ACTION_IPC),
                     ContextCompat.RECEIVER_EXPORTED
                 )
+                registeredContext = appContext
                 isInitialized = true
             }
         }
         BridgeRoutingScope().apply(block)
+    }
+
+    /**
+     * 释放广播路由和协程。
+     *
+     * 主要用于 libxposed API 102 热重载，避免 SystemUI 持续持有旧模块 classloader。
+     */
+    fun release() {
+        val context = registeredContext
+        if (isInitialized && context != null) {
+            runCatching { context.unregisterReceiver(receiver) }
+        }
+        handlers.clear()
+        bridgeScope.cancel()
+        registeredContext = null
+        isInitialized = false
     }
 
     /**

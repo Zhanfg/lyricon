@@ -1,6 +1,9 @@
 name: Android CI
 
 on:
+  push:
+    branches:
+      - 'fix/**'
   workflow_dispatch:
     inputs:
       build_type:
@@ -12,9 +15,18 @@ on:
           - debug
           - release
 
+concurrency:
+  group: android-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      BUILD_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.build_type || 'debug' }}
 
     steps:
       - name: 检出代码
@@ -25,87 +37,63 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
-      - name: 删除 Gradle 守护进程 JDK 配置
+      - name: 设置 Gradle 缓存
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 清理 Runner 不兼容配置
+        shell: bash
         run: |
-          echo "检查并删除 Gradle 守护进程 JDK 配置..."
-          if [ -f "gradle/gradle-daemon-jvm.properties" ]; then
-            echo "找到配置文件, 正在删除..."
-            rm -f gradle/gradle-daemon-jvm.properties
-            echo "✅ 已删除 Gradle 守护进程 JDK 配置"
-          else
-            echo "✅ 没有找到配置文件, 无需删除"
-          fi
-
-      - name: 授予 Gradle 执行权限
-        run: chmod +x gradlew
-
-      - name: 修正 Gradle 配置文件
-        run: |
-          echo "正在修正 gradle.properties..."
+          rm -f gradle/gradle-daemon-jvm.properties
           if [ -f "gradle.properties" ]; then
             sed -i 's/-XX:+CMSClassUnloadingEnabled//g' gradle.properties
             sed -i 's/-Xmx8g/-Xmx4g/g' gradle.properties
             sed -i 's/-XX:MaxMetaspaceSize=2g/-XX:MaxMetaspaceSize=1g/g' gradle.properties
-            echo "✅ 修正完成"
           fi
-
-      - name: 缓存 Gradle 依赖
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+          chmod +x gradlew
 
       - name: 解码签名密钥
-        if: github.event.inputs.build_type == 'release'
+        if: env.BUILD_TYPE == 'release'
+        shell: bash
         run: |
           echo "${{ secrets.SIGNING_KEY }}" | base64 -d > release.jks
-          echo "密钥已保存到 release.jks"
 
-      - name: 构建 ${{ github.event.inputs.build_type }} APK
-        run: |
-          if [ "${{ github.event.inputs.build_type }}" == "debug" ]; then
-            ./gradlew :lyricon:assembleDebug
-          else
-            ./gradlew :lyricon:assembleRelease
-          fi
+      - name: 构建 APK
+        shell: bash
         env:
           RELEASE_STORE_FILE: ../release.jks
           RELEASE_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "Build type: ${BUILD_TYPE}"
+          if [ "${BUILD_TYPE}" = "release" ]; then
+            ./gradlew --stacktrace :lyricon:assembleRelease
+          else
+            ./gradlew --stacktrace :lyricon:assembleDebug
+          fi
 
-      - name: 上传 APK 文件
+      - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:
-          name: lyricon-${{ github.event.inputs.build_type }}-apk
-          path: lyricon/build/outputs/apk/${{ github.event.inputs.build_type }}/lyricon-*${{ github.event.inputs.build_type }}.apk
-          if-no-files-found: warn
+          name: lyricon-${{ env.BUILD_TYPE }}-${{ github.ref_name }}-${{ github.run_number }}
+          path: |
+            lyricon/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 14
 
-      - name: 清理敏感文件
-        if: github.event.inputs.build_type == 'release'
+      - name: 清理签名文件
+        if: always()
+        shell: bash
+        run: rm -f release.jks
+
+      - name: 构建摘要
+        if: always()
+        shell: bash
         run: |
-          rm -f release.jks
-          echo "已清理敏感文件"
-
-  summary:
-    runs-on: ubuntu-latest
-    needs: build
-    if: always()
-
-    steps:
-      - name: 构建结果摘要
-        run: |
-          echo "## 构建完成 ✅" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **分支**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **提交**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **构建类型**: ${{ github.event.inputs.build_type }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **构建编号**: ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "APK 文件已上传到 Artifacts，可在 Actions 页面下载。" >> $GITHUB_STEP_SUMMARY
+          echo "## Lyricon Build" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Branch: ${{ github.ref_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Type: ${BUILD_TYPE}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Run: #${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"

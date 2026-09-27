@@ -15,6 +15,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -87,6 +88,14 @@ object AiTranslator {
         Log.i(TAG, "Clearing all translation caches (Memory & DB)...")
         scheduler.cancelPending()
         cache.clear(callback)
+    }
+
+    /** API 102 热重载前停止翻译任务并关闭缓存资源。 */
+    fun release() {
+        scheduler.shutdown()
+        scope.cancel()
+        cache.close()
+        Log.i(TAG, "Released")
     }
 
     private suspend fun translateSong(

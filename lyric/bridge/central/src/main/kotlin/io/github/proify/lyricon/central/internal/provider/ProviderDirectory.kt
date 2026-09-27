@@ -44,4 +44,9 @@ internal class ProviderDirectory(
     fun unregister(connection: ProviderConnection) {
         registry.unregister(connection)
     }
+
+    /** 关闭全部提供端连接。 */
+    fun release() {
+        registry.clear()
+    }
 }

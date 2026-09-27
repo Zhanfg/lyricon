@@ -172,6 +172,18 @@
     <string name="option_text_placeholder_format_name">Title Only</string>
     <string name="item_text_placeholder_format">Placeholder</string>
     <string name="item_translation_ai_enable">Enable AI translation</string>
+    <string name="item_translation_engine">Translation engine</string>
+    <string name="option_translation_engine_off">Off</string>
+    <string name="option_translation_engine_google">Google Translate (NMT)</string>
+    <string name="option_translation_engine_microsoft">Microsoft Translator</string>
+    <string name="option_translation_engine_ai">AI translation</string>
+    <string name="item_translation_google_api_key">Google Cloud API key</string>
+    <string name="item_translation_microsoft_api_key">Microsoft Translator key</string>
+    <string name="item_translation_microsoft_region">Microsoft region</string>
+    <string name="item_translation_microsoft_region_optional">Optional; usually required for multi-service resources</string>
+    <string name="dialog_summary_translation_google_api_key">Used with Cloud Translation Basic. Lyricon explicitly requests the NMT model and does not call Translation LLM.</string>
+    <string name="dialog_summary_translation_microsoft_api_key">Used with Microsoft Translator Text API v3.</string>
+    <string name="dialog_summary_translation_microsoft_region">For example eastasia. Required for regional or multi-service resources; leave blank for compatible global single-service resources.</string>
     <string name="item_translation_target_language">Target language</string>
     <string name="item_translation_api_key">API key</string>
     <string name="item_translation_model">Model</string>
@@ -233,7 +245,7 @@
     <string name="dialog_summary_text_marquee_initial_delay">Delay before marquee scrolling starts, in milliseconds.</string>
     <string name="dialog_summary_text_marquee_delay">Delay between marquee scroll loops, in milliseconds.</string>
     <string name="dialog_summary_text_marquee_repeat_count">Maximum number of marquee repeats when infinite scrolling is disabled.</string>
-    <string name="dialog_summary_translation_target_language">Language that AI translation should output, such as English or Japanese.</string>
+    <string name="dialog_summary_translation_target_language">Output language shared by Google, Microsoft and AI translation engines.</string>
     <string name="dialog_summary_translation_api_key">API key used to access the OpenAI-compatible translation service.</string>
     <string name="dialog_summary_translation_model">Model name used for AI translation. Use the search button to load available models.</string>
     <string name="dialog_summary_translation_base_url">Base URL of an OpenAI-compatible API endpoint.</string>

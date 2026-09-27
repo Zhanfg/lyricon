@@ -84,6 +84,16 @@ object ViewVisibilityTracker {
     }
 
     /**
+     * 释放当前模块代际的 View.setFlags Hook 与缓存。
+     */
+    fun release() {
+        unhookHandle?.unhook()
+        unhookHandle = null
+        originalVisibilityMap.clear()
+        YLog.info(TAG, "Released")
+    }
+
+    /**
      * 处理 [View.setFlags] 的参数
      *
      * - 拦截自定义可见性标记，替换为系统标准值并保存原始状态

@@ -45,6 +45,9 @@ internal class ProviderDirectory(
         registry.unregister(connection)
     }
 
+    /** 当前已注册提供端数量。 */
+    fun count(): Int = registry.size()
+
     /** 关闭全部提供端连接。 */
     fun release() {
         registry.clear()

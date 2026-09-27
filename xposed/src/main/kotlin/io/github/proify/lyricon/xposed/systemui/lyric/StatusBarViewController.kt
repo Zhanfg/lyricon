@@ -61,7 +61,7 @@ class StatusBarViewController(
             "system_icon_area"
         )
 
-        private const val SHOW_INJECTION_PROBE = true
+        private const val SHOW_INJECTION_PROBE = false
         private const val PROBE_DURATION_MS = 60_000L
         private const val PROBE_REFRESH_MS = 500L
     }

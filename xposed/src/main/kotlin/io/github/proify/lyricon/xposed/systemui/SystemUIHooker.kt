@@ -290,13 +290,21 @@ object SystemUIHooker : PackageHooker() {
         ViewVisibilityTracker.release()
         LyricPrefs.release()
 
+        // 先从 Subscriber 移除 LyricDataHub，阻止清理过程中继续收到远端回调；
+        // 随后同步等待歌词流水线退出，再释放其依赖的 AI/媒体资源。
+        subscriber?.let { current ->
+            runCatching { current.unsubscribeActivePlayer(LyricDataHub) }
+                .onFailure { YLog.error(TAG, "Failed to unsubscribe LyricDataHub", it) }
+        }
+        LyricDataHub.release()
+
         // 媒体与 AI 后台任务可能持有旧模块对象，必须显式断开。
         NotificationCoverHelper.destroy()
         SystemUIMediaUtils.release()
         ScreenStateMonitor.release()
         AiTranslator.release()
 
-        // 先销毁本进程 Subscriber，再关闭内置 Central 的 Binder 连接。
+        // 销毁本进程 Subscriber，再关闭内置 Central 的 Binder 连接。
         subscriber?.let { current ->
             runCatching { current.unregister() }
             runCatching { current.destroy() }

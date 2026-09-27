@@ -69,7 +69,10 @@ class ClassicTranslationPostProcessor : PostProcessor {
 
         val engine = style.basicStyle.translationEngine
         val targetCode = style.basicStyle.translationTargetLanguageCode
-            .ifBlank { Locale.getDefault().toLanguageTag() }
+            .ifBlank {
+                resolveLanguageCode(style.basicStyle.aiTranslationTargetLanguage)
+                    ?: Locale.getDefault().toLanguageTag()
+            }
 
         val prefs = LyricPrefs.baseStylePrefs
         val config = ClassicTranslationConfig(
@@ -104,6 +107,25 @@ class ClassicTranslationPostProcessor : PostProcessor {
                 song
             }
         }
+    }
+
+    private fun resolveLanguageCode(displayName: String): String? {
+        val query = displayName.trim()
+        if (query.isBlank()) return null
+
+        val displayLocale = Locale.getDefault()
+        return Locale.getAvailableLocales()
+            .asSequence()
+            .filter { it.language.isNotBlank() && it.language != "und" }
+            .firstOrNull { locale ->
+                query.equals(locale.toLanguageTag(), ignoreCase = true) ||
+                        query.equals(locale.language, ignoreCase = true) ||
+                        query.equals(locale.getDisplayLanguage(displayLocale), ignoreCase = true) ||
+                        query.equals(locale.getDisplayName(displayLocale), ignoreCase = true) ||
+                        query.equals(locale.getDisplayLanguage(Locale.ENGLISH), ignoreCase = true) ||
+                        query.equals(locale.getDisplayName(Locale.ENGLISH), ignoreCase = true)
+            }
+            ?.toLanguageTag()
     }
 
     private fun Song.isFullyChinese(): Boolean =

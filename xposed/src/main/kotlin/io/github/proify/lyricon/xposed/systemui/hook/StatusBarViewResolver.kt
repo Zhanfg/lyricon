@@ -19,6 +19,7 @@ import io.github.libxposed.api.XposedModule
 import io.github.proify.lyricon.xposed.logger.YLog
 import java.lang.ref.WeakReference
 import java.util.ArrayDeque
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * 状态栏视图解析工具类 (StatusBarViewResolver)
@@ -46,6 +47,7 @@ object StatusBarViewResolver {
 
     private val registry = mutableListOf<OnViewResolvedListener>()
     private val resolvedRoots = mutableListOf<WeakReference<ViewGroup>>()
+    private val hookHandles = CopyOnWriteArrayList<XposedInterface.HookHandle>()
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private var isInitialized = false
@@ -107,6 +109,20 @@ object StatusBarViewResolver {
         }
     }
 
+    /**
+     * 释放当前模块代际注册的 Hook、延迟扫描和订阅者。
+     * API 102 热重载前调用，确保旧 classloader 不再被 SystemUI 长期持有。
+     */
+    fun release() {
+        mainHandler.removeCallbacksAndMessages(null)
+        hookHandles.forEach { handle -> runCatching { handle.unhook() } }
+        hookHandles.clear()
+        registry.clear()
+        resolvedRoots.clear()
+        isInitialized = false
+        YLog.info(TAG, "Released")
+    }
+
     private fun hookLayoutInflater(
         module: XposedModule,
         classLoader: ClassLoader,
@@ -122,7 +138,7 @@ object StatusBarViewResolver {
             )
 
             @Suppress("ObjectLiteralToLambda")
-            module.hook(inflateMethod).intercept(object : XposedInterface.Hooker {
+            val handle = module.hook(inflateMethod).intercept(object : XposedInterface.Hooker {
                 override fun intercept(chain: XposedInterface.Chain): Any? {
                     val result = chain.proceed()
                     val currentLayoutId = chain.args[0] as? Int
@@ -135,6 +151,7 @@ object StatusBarViewResolver {
                     return result
                 }
             })
+            hookHandles.add(handle)
 
             YLog.info(TAG, "LayoutInflater status_bar hook installed")
         } catch (t: Throwable) {
@@ -155,7 +172,7 @@ object StatusBarViewResolver {
             )
 
             @Suppress("ObjectLiteralToLambda")
-            module.hook(addViewMethod).intercept(object : XposedInterface.Hooker {
+            val handle = module.hook(addViewMethod).intercept(object : XposedInterface.Hooker {
                 override fun intercept(chain: XposedInterface.Chain): Any? {
                     val result = chain.proceed()
                     val addedView = chain.args.firstOrNull() as? View
@@ -169,6 +186,7 @@ object StatusBarViewResolver {
                     return result
                 }
             })
+            hookHandles.add(handle)
 
             YLog.info(TAG, "WindowManager addView fallback hook installed")
         } catch (t: Throwable) {

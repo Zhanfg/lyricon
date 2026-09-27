@@ -77,7 +77,7 @@ jobs:
       - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:
-          name: lyricon-${{ env.BUILD_TYPE }}-${{ github.ref_name }}-${{ github.run_number }}
+          name: lyricon-${{ env.BUILD_TYPE }}-${{ github.run_number }}
           path: |
             lyricon/build/outputs/apk/**/*.apk
           if-no-files-found: error

@@ -20,6 +20,9 @@ internal object CentralRuntime {
     val subscribers = SubscriberDirectory()
     val registration = RegistrationDispatcher(providers, subscribers)
 
+    fun providerCount(): Int = providers.count()
+    fun subscriberCount(): Int = subscribers.count()
+
     /** 释放全部中央连接与播放器状态。 */
     fun release() {
         subscribers.release()

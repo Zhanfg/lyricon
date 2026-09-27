@@ -328,19 +328,25 @@ object ClassicTranslator {
 
     private fun normalizeGoogleLanguage(code: String): String {
         val normalized = code.trim().replace('_', '-')
-        return when (normalized.lowercase(Locale.ROOT)) {
-            "zh-hans", "zh-cn", "zh-sg" -> "zh-CN"
+        val lower = normalized.lowercase(Locale.ROOT)
+        return when (lower) {
+            "zh", "zh-hans", "zh-cn", "zh-sg" -> "zh-CN"
             "zh-hant", "zh-tw", "zh-hk", "zh-mo" -> "zh-TW"
-            else -> normalized
+            else -> Locale.forLanguageTag(normalized).language
+                .takeIf { it.isNotBlank() && it != "und" }
+                ?: normalized
         }
     }
 
     private fun normalizeMicrosoftLanguage(code: String): String {
         val normalized = code.trim().replace('_', '-')
-        return when (normalized.lowercase(Locale.ROOT)) {
+        val lower = normalized.lowercase(Locale.ROOT)
+        return when (lower) {
             "zh", "zh-cn", "zh-sg", "zh-hans" -> "zh-Hans"
             "zh-tw", "zh-hk", "zh-mo", "zh-hant" -> "zh-Hant"
-            else -> normalized
+            else -> Locale.forLanguageTag(normalized).language
+                .takeIf { it.isNotBlank() && it != "und" }
+                ?: normalized
         }
     }
 

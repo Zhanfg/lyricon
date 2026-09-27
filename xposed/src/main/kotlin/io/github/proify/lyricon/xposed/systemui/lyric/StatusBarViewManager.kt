@@ -67,6 +67,24 @@ object StatusBarViewManager {
     }
 
     /**
+     * 同步销毁全部控制器。
+     *
+     * 调用者必须位于主线程；API 102 热重载会在进入这里前切到主线程并等待完成。
+     */
+    fun destroyAllNow() {
+        check(Thread.currentThread() === MAIN_LOOPER.thread) {
+            "destroyAllNow must run on the main thread"
+        }
+        val snapshot = _controllers.toList()
+        _controllers.clear()
+        snapshot.forEach { controller ->
+            runCatching { controller.onDestroy() }
+                .onFailure { error -> Log.e(TAG, "Controller destroy failed", error) }
+        }
+        Log.d(TAG, "Destroyed " + snapshot.size + " controllers")
+    }
+
+    /**
      * 执行遍历操作。
      * 注意：此方法在调用者当前线程执行。
      * @param block 针对每个控制器执行的操作块

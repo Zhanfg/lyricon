@@ -70,4 +70,10 @@ internal class ActivePlayerSelector {
         activeIsPlaying = false
         return true
     }
+
+    /** 无条件清空选择状态。用于 Central 生命周期结束。 */
+    fun reset() {
+        activeSession = null
+        activeIsPlaying = false
+    }
 }

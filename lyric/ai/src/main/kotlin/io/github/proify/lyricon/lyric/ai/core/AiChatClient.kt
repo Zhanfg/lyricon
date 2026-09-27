@@ -39,11 +39,18 @@ object AiChatClient {
     private const val DEFAULT_BASE_URL = "https://api.openai.com/v1"
     private const val MAX_CLIENTS = 8
 
-    /** 有界客户端缓存：超限淘汰最久未用的客户端（其底层线程池随之释放）。 */
+    /** 有界客户端缓存：超限时主动关闭最久未用客户端，立即释放连接池与线程。 */
     private val clients = object : LinkedHashMap<String, OpenAIClient>(MAX_CLIENTS, 0.75f, true) {
         override fun removeEldestEntry(
             eldest: MutableMap.MutableEntry<String, OpenAIClient>?
-        ): Boolean = size > MAX_CLIENTS
+        ): Boolean {
+            val shouldEvict = size > MAX_CLIENTS
+            if (shouldEvict) {
+                runCatching { eldest?.value?.close() }
+                    .onFailure { Log.w(TAG, "Failed to close evicted OpenAI client", it) }
+            }
+            return shouldEvict
+        }
     }
 
     /**
@@ -138,6 +145,23 @@ object AiChatClient {
             Log.e(TAG, "AI stream failed: ${e.message}", e)
             null
         }
+    }
+
+    /**
+     * 立即关闭并清空当前进程缓存的全部 OpenAI 客户端。
+     *
+     * SystemUI 的 libxposed API 102 热重载会调用此方法，确保 OkHttp 连接池、
+     * dispatcher 线程和进行中的请求不再持有旧模块 classloader。
+     */
+    fun release() {
+        synchronized(clients) {
+            clients.values.forEach { client ->
+                runCatching { client.close() }
+                    .onFailure { Log.w(TAG, "Failed to close OpenAI client", it) }
+            }
+            clients.clear()
+        }
+        Log.i(TAG, "Released OpenAI clients")
     }
 
     private fun resolveBaseUrl(configs: AiConfig): String {

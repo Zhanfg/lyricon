@@ -37,30 +37,61 @@ internal class RegistrationDispatcher(
      */
     fun handle(intent: Intent) {
         when (intent.action) {
-            CentralConstants.ACTION_REGISTER_PROVIDER -> registerProvider(intent)
+            CentralConstants.ACTION_REGISTER_PROVIDER -> {
+                RegistrationDiagnostics.onProviderIntent()
+                registerProvider(intent)
+            }
             CentralConstants.ACTION_REGISTER_SUBSCRIBER -> registerSubscriber(intent)
         }
     }
 
     /** 解析并注册提供端；成功后回执远端服务。 */
     private fun registerProvider(intent: Intent) {
-        val binder = getBinder<IProviderBinder>(intent) ?: return
+        val binder = getBinder<IProviderBinder>(intent) ?: run {
+            RegistrationDiagnostics.fail("B", "provider binder missing or invalid")
+            return
+        }
+        RegistrationDiagnostics.onProviderBinder()
+
         var connection: ProviderConnection? = null
 
         try {
-            val info = binder.providerInfo
-                ?.toString(Charsets.UTF_8)
-                ?.let { json.decodeFromString(ProviderInfo.serializer(), it) }
+            val rawInfo = binder.providerInfo ?: run {
+                RegistrationDiagnostics.fail("N", "providerInfo is null")
+                return
+            }
 
-            if (info?.providerPackageName.isNullOrBlank() || info.playerPackageName.isBlank()) {
+            val info = runCatching {
+                rawInfo.toString(Charsets.UTF_8)
+                    .let { json.decodeFromString(ProviderInfo.serializer(), it) }
+            }.getOrElse { error ->
+                RegistrationDiagnostics.fail(
+                    "J",
+                    error.javaClass.simpleName + ": " + (error.message ?: "")
+                )
+                Log.e(TAG, "Provider info decode failed", error)
+                return
+            }
+
+            RegistrationDiagnostics.onProviderInfo()
+
+            if (info.providerPackageName.isBlank() || info.playerPackageName.isBlank()) {
+                RegistrationDiagnostics.fail("I", "provider/player package is blank")
                 Log.e(TAG, "Provider info is invalid: $info")
                 return
             }
 
             connection = providers.getOrCreate(binder, info)
+            RegistrationDiagnostics.onProviderRegistered()
             Log.d(TAG, "Provider registered: $info")
+
             binder.onRegistrationCallback(connection.service)
+            RegistrationDiagnostics.onProviderCallback()
         } catch (e: Exception) {
+            RegistrationDiagnostics.fail(
+                "C",
+                e.javaClass.simpleName + ": " + (e.message ?: "")
+            )
             Log.e(TAG, "Provider registration failed", e)
             connection?.let { providers.unregister(it) }
         }

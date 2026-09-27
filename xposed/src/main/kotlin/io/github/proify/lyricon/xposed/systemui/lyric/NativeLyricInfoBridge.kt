@@ -52,6 +52,7 @@ object NativeLyricInfoBridge : SystemUIMediaUtils.MediaControllerCallback {
     private var latestState: PlaybackState? = null
 
     private var latestTrackKey: String? = null
+    private var latestMetadataTrackKey: String? = null
     private var latestLyricFingerprint: String? = null
     private var pendingClear: Runnable? = null
     private var tickerRunning = false
@@ -90,6 +91,7 @@ object NativeLyricInfoBridge : SystemUIMediaUtils.MediaControllerCallback {
         stopTicker()
         latestState = null
         latestTrackKey = null
+        latestMetadataTrackKey = null
         latestLyricFingerprint = null
 
         val pkg = activePackage
@@ -134,6 +136,7 @@ object NativeLyricInfoBridge : SystemUIMediaUtils.MediaControllerCallback {
 
         latestLyricFingerprint = fingerprint
         latestTrackKey = parsed.trackKey
+        latestMetadataTrackKey = metadataTrackKey(metadata)
         activePackage = packageName
 
         ensureNativeProvider(packageName)
@@ -252,7 +255,7 @@ object NativeLyricInfoBridge : SystemUIMediaUtils.MediaControllerCallback {
         if (packageName != activePackage) return
 
         val currentTrack = metadataTrackKey(metadata)
-        val previousTrack = latestTrackKey
+        val previousTrack = latestMetadataTrackKey
         if (
             previousTrack.isNullOrBlank() ||
             currentTrack.isBlank() ||
@@ -282,6 +285,7 @@ object NativeLyricInfoBridge : SystemUIMediaUtils.MediaControllerCallback {
         stopTicker()
         latestState = null
         latestTrackKey = null
+        latestMetadataTrackKey = null
         latestLyricFingerprint = null
         activePackage = null
         LyricDataHub.onSongChanged(null)

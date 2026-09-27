@@ -51,6 +51,7 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Search
+import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.LocalDismissState
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -70,26 +71,71 @@ import java.util.Locale
  */
 @Composable
 fun AiTranslationPreference(preferences: SharedPreferences) {
-    var isAiTranslationEnabled by rememberBooleanPreference(
-        sharedPreferences = preferences,
-        key = TextStyle.KEY_AI_TRANSLATION_ENABLED,
-        defaultValue = TextStyle.Defaults.AI_TRANSLATION_ENABLED
-    )
-    SwitchPreference(
-        checked = isAiTranslationEnabled,
-        onCheckedChange = { isAiTranslationEnabled = it },
-        title = stringResource(R.string.item_translation_ai_enable),
-        startAction = { IconActions(painterResource(R.drawable.translate_24px)) },
+    val legacyAiEnabled = remember {
+        preferences.getBoolean(
+            TextStyle.KEY_AI_TRANSLATION_ENABLED,
+            TextStyle.Defaults.AI_TRANSLATION_ENABLED
+        )
+    }
+    val initialEngine = remember {
+        preferences.getString(TextStyle.KEY_TRANSLATION_ENGINE, null)
+            ?: if (legacyAiEnabled) {
+                TextStyle.TRANSLATION_ENGINE_AI
+            } else {
+                TextStyle.Defaults.TRANSLATION_ENGINE
+            }
+    }
+
+    var engine by rememberStringPreference(
+        preferences,
+        TextStyle.KEY_TRANSLATION_ENGINE,
+        initialEngine
     )
 
-    var isAiTranslationAutoIgnoreChinese by rememberBooleanPreference(
+    val engineIds = listOf(
+        TextStyle.TRANSLATION_ENGINE_OFF,
+        TextStyle.TRANSLATION_ENGINE_GOOGLE,
+        TextStyle.TRANSLATION_ENGINE_MICROSOFT,
+        TextStyle.TRANSLATION_ENGINE_AI,
+    )
+    val engineLabels = listOf(
+        stringResource(R.string.option_translation_engine_off),
+        stringResource(R.string.option_translation_engine_google),
+        stringResource(R.string.option_translation_engine_microsoft),
+        stringResource(R.string.option_translation_engine_ai),
+    )
+    val selectedEngineIndex = engineIds.indexOf(engine).coerceAtLeast(0)
+
+    OverlayDropdownPreference(
+        title = stringResource(R.string.item_translation_engine),
+        items = engineLabels,
+        selectedIndex = selectedEngineIndex,
+        startAction = { IconActions(painterResource(R.drawable.translate_24px)) },
+        onSelectedIndexChange = { index ->
+            val selected = engineIds[index]
+            engine = selected
+            preferences.edit()
+                .putBoolean(
+                    TextStyle.KEY_AI_TRANSLATION_ENABLED,
+                    selected == TextStyle.TRANSLATION_ENGINE_AI
+                )
+                .apply()
+        }
+    )
+
+    if (engine == TextStyle.TRANSLATION_ENGINE_OFF) {
+        ClearTranslationDB()
+        return
+    }
+
+    var autoIgnoreChinese by rememberBooleanPreference(
         sharedPreferences = preferences,
         key = TextStyle.KEY_AI_TRANSLATION_IGNORE_CHINESE,
         defaultValue = TextStyle.Defaults.AI_TRANSLATION_IGNORE_CHINESE
     )
     SwitchPreference(
-        checked = isAiTranslationAutoIgnoreChinese,
-        onCheckedChange = { isAiTranslationAutoIgnoreChinese = it },
+        checked = autoIgnoreChinese,
+        onCheckedChange = { autoIgnoreChinese = it },
         title = stringResource(R.string.item_translation_auto_ignore_chinese),
         summary = stringResource(R.string.item_translation_auto_ignore_chinese_summary),
         startAction = { IconActions(painterResource(R.drawable.translate_24px)) },
@@ -97,14 +143,73 @@ fun AiTranslationPreference(preferences: SharedPreferences) {
 
     TranslationTargetLanguagePreference(preferences)
 
-    StringInputPreference(
-        preferences = preferences,
-        key = TextStyle.KEY_AI_TRANSLATION_PROMPT,
-        title = stringResource(R.string.item_translation_custom_prompt),
-        dialogSummary = stringResource(R.string.dialog_summary_translation_custom_prompt),
-        defaultValue = TextStyle.Defaults.AI_TRANSLATION_PROMPT,
-        startAction = { IconActions(painterResource(R.drawable.title_24px)) },
-    )
+    when (engine) {
+        TextStyle.TRANSLATION_ENGINE_GOOGLE -> {
+            val apiKey by rememberStringPreference(
+                preferences,
+                TextStyle.KEY_TRANSLATION_GOOGLE_API_KEY,
+                null
+            )
+            StringInputPreference(
+                preferences = preferences,
+                key = TextStyle.KEY_TRANSLATION_GOOGLE_API_KEY,
+                title = stringResource(R.string.item_translation_google_api_key),
+                summary = if (apiKey.isNullOrBlank()) {
+                    stringResource(R.string.item_translation_api_key_not_set)
+                } else {
+                    stringResource(R.string.item_translation_api_key_set)
+                },
+                dialogSummary = stringResource(R.string.dialog_summary_translation_google_api_key),
+                startAction = { IconActions(painterResource(R.drawable.vpn_key_24px)) },
+                maxLines = 1,
+            )
+        }
+
+        TextStyle.TRANSLATION_ENGINE_MICROSOFT -> {
+            val apiKey by rememberStringPreference(
+                preferences,
+                TextStyle.KEY_TRANSLATION_MICROSOFT_API_KEY,
+                null
+            )
+            StringInputPreference(
+                preferences = preferences,
+                key = TextStyle.KEY_TRANSLATION_MICROSOFT_API_KEY,
+                title = stringResource(R.string.item_translation_microsoft_api_key),
+                summary = if (apiKey.isNullOrBlank()) {
+                    stringResource(R.string.item_translation_api_key_not_set)
+                } else {
+                    stringResource(R.string.item_translation_api_key_set)
+                },
+                dialogSummary = stringResource(R.string.dialog_summary_translation_microsoft_api_key),
+                startAction = { IconActions(painterResource(R.drawable.vpn_key_24px)) },
+                maxLines = 1,
+            )
+            StringInputPreference(
+                preferences = preferences,
+                key = TextStyle.KEY_TRANSLATION_MICROSOFT_REGION,
+                title = stringResource(R.string.item_translation_microsoft_region),
+                summary = preferences.getString(
+                    TextStyle.KEY_TRANSLATION_MICROSOFT_REGION,
+                    null
+                )?.takeIf { it.isNotBlank() }
+                    ?: stringResource(R.string.item_translation_microsoft_region_optional),
+                dialogSummary = stringResource(R.string.dialog_summary_translation_microsoft_region),
+                startAction = { IconActions(painterResource(R.drawable.ic_language)) },
+                maxLines = 1,
+            )
+        }
+
+        TextStyle.TRANSLATION_ENGINE_AI -> {
+            StringInputPreference(
+                preferences = preferences,
+                key = TextStyle.KEY_AI_TRANSLATION_PROMPT,
+                title = stringResource(R.string.item_translation_custom_prompt),
+                dialogSummary = stringResource(R.string.dialog_summary_translation_custom_prompt),
+                defaultValue = TextStyle.Defaults.AI_TRANSLATION_PROMPT,
+                startAction = { IconActions(painterResource(R.drawable.title_24px)) },
+            )
+        }
+    }
 
     ClearTranslationDB()
 }

@@ -11,6 +11,8 @@ package io.github.proify.lyricon.xposed.systemui.util
 import android.graphics.Bitmap
 import android.media.MediaMetadata
 import android.media.session.MediaController
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.core.graphics.scale
 import io.github.proify.android.extensions.md5
@@ -21,8 +23,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -67,8 +71,11 @@ object NotificationCoverHelper {
     /** 标记是否已完成初始化 */
     private val initialized = AtomicBoolean(false)
 
-    /** 协程作用域，用于异步执行文件 IO 操作 */
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    /** 仅承载封面 IO，避免热重载清理时与主线程互相等待。 */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** 封面完成通知回到主线程；销毁时统一移除尚未执行的通知。 */
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     /** 按包名管理各自的封面写入器，线程安全 */
     private val sessionWriters = ConcurrentHashMap<String, SessionCoverWriter>()
@@ -149,10 +156,16 @@ object NotificationCoverHelper {
      */
     fun destroy() {
         SystemUIMediaUtils.unregisterListener(mediaCallback)
-        scope.cancel()
+        initialized.set(false)
+
+        val rootJob = scope.coroutineContext[Job]
+        runBlocking {
+            rootJob?.cancelAndJoin()
+        }
+
+        mainHandler.removeCallbacksAndMessages(null)
         sessionWriters.clear()
         updateListeners.clear()
-        initialized.set(false)
         Log.i(TAG, "Destroyed")
     }
 
@@ -290,7 +303,11 @@ object NotificationCoverHelper {
                     if (savedSuccessfully) {
                         lastCoverId = coverId
                         getLatestCoverFile(packageName)?.let { file ->
-                            notifyListeners(packageName, file)
+                            mainHandler.post {
+                                if (initialized.get()) {
+                                    notifyListeners(packageName, file)
+                                }
+                            }
                         }
                     }
 

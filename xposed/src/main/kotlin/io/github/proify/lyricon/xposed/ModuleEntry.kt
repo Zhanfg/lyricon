@@ -15,6 +15,7 @@ import io.github.proify.lyricon.common.PackageNames
 import io.github.proify.lyricon.xposed.hook.GeneralHooker
 import io.github.proify.lyricon.xposed.logger.YLog
 import io.github.proify.lyricon.xposed.systemui.SystemUIHooker
+import io.github.proify.lyricon.xposed.systemui.hook.StatusBarViewResolver
 
 /**
  * libxposed API 102 模块入口。
@@ -45,7 +46,19 @@ class ModuleEntry : XposedModule() {
 
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
         super.onPackageReady(param)
-        YLog.info(TAG, "onPackageReady: packageName=" + param.packageName)
+        val packageName = param.packageName
+        YLog.info(
+            TAG,
+            "onPackageReady: packageName=" + packageName +
+                    ", firstPackage=" + param.isFirstPackage
+        )
+
+        if (packageName == PackageNames.SYSTEM_UI && param.isFirstPackage) {
+            StatusBarViewResolver.installPackageReadyHook(
+                module = this,
+                classLoader = param.classLoader
+            )
+        }
     }
 
     override fun onSystemServerStarting(param: XposedModuleInterface.SystemServerStartingParam) {
@@ -168,6 +181,9 @@ class ModuleEntry : XposedModule() {
 
         GeneralHooker.hookAfterHotReload(this, application, restoredClassLoader)
         if (packageName == PackageNames.SYSTEM_UI) {
+            // 热重载不会重新触发 onPackageReady，必须显式重装 ColorOS 16 的
+            // PhoneStatusBarView.onFinishInflate 主解析 Hook。
+            StatusBarViewResolver.installPackageReadyHook(this, restoredClassLoader)
             SystemUIHooker.hookAfterHotReload(this, application, restoredClassLoader)
         }
     }

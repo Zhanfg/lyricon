@@ -104,6 +104,14 @@ internal class AiTranslationCache(
         }
     }
 
+    fun close() {
+        memory.clear()
+        synchronized(this) {
+            dbHelper?.close()
+            dbHelper = null
+        }
+    }
+
     fun clear(callback: () -> Unit) {
         generation.incrementAndGet()
         memory.clear()

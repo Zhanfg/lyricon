@@ -19,4 +19,11 @@ internal object CentralRuntime {
     val providers = ProviderDirectory(activePlayers)
     val subscribers = SubscriberDirectory()
     val registration = RegistrationDispatcher(providers, subscribers)
+
+    /** 释放全部中央连接与播放器状态。 */
+    fun release() {
+        subscribers.release()
+        providers.release()
+        activePlayers.release()
+    }
 }

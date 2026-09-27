@@ -45,6 +45,7 @@ object StatusBarDisableHooker {
      * 在遍历分发事件时可以进行安全的并发修改操作
      */
     private val listeners = CopyOnWriteArraySet<OnStatusBarDisableListener>()
+    private var hookHandle: XposedInterface.HookHandle? = null
 
     /**
      * 注册状态栏禁用事件监听器
@@ -90,7 +91,8 @@ object StatusBarDisableHooker {
             )
 
             @Suppress("ObjectLiteralToLambda")
-            module.hook(method).intercept(object : XposedInterface.Hooker {
+            hookHandle?.unhook()
+            hookHandle = module.hook(method).intercept(object : XposedInterface.Hooker {
                 /**
                  * Hook 回调：在 disable 方法执行后拦截
                  *
@@ -123,6 +125,16 @@ object StatusBarDisableHooker {
         } catch (_: Throwable) {
             //YLog.error(TAG, " -> Hook 注入失败: ")
         }
+    }
+
+    /**
+     * API 102 热重载前清理旧代际 Hook 与监听器。
+     */
+    fun release() {
+        hookHandle?.unhook()
+        hookHandle = null
+        listeners.clear()
+        YLog.info(TAG, "Released")
     }
 
     /**

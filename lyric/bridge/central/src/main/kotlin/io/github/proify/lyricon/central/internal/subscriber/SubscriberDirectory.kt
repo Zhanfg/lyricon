@@ -38,6 +38,9 @@ internal class SubscriberDirectory {
         registry.unregister(connection)
     }
 
+    /** 当前已注册订阅端数量。 */
+    fun count(): Int = registry.size()
+
     /** 关闭全部订阅端连接。 */
     fun release() {
         registry.clear()

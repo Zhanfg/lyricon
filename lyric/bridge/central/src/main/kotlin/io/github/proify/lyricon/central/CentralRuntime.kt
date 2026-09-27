@@ -8,6 +8,7 @@ package io.github.proify.lyricon.central
 
 import io.github.proify.lyricon.central.internal.player.ActivePlayerHub
 import io.github.proify.lyricon.central.internal.provider.ProviderDirectory
+import io.github.proify.lyricon.central.internal.registration.RegistrationDiagnostics
 import io.github.proify.lyricon.central.internal.registration.RegistrationDispatcher
 import io.github.proify.lyricon.central.internal.subscriber.SubscriberDirectory
 
@@ -22,11 +23,14 @@ internal object CentralRuntime {
 
     fun providerCount(): Int = providers.count()
     fun subscriberCount(): Int = subscribers.count()
+    fun registrationDiagnostics(): RegistrationDiagnostics.Snapshot =
+        RegistrationDiagnostics.snapshot()
 
     /** 释放全部中央连接与播放器状态。 */
     fun release() {
         subscribers.release()
         providers.release()
         activePlayers.release()
+        RegistrationDiagnostics.reset()
     }
 }

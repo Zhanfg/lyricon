@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'fix/**'
+      - 'feat/**'
   workflow_dispatch:
     inputs:
       build_type:

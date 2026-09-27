@@ -6,6 +6,7 @@
 
 package io.github.proify.lyricon.xposed
 
+import android.app.Application
 import androidx.annotation.Keep
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface
@@ -15,16 +16,13 @@ import io.github.proify.lyricon.xposed.logger.YLog
 import io.github.proify.lyricon.xposed.systemui.SystemUIHooker
 
 /**
- * ooooo        oooooo   oooo ooooooooo.   ooooo   .oooooo.     .oooooo.   ooooo      ooo
- * `888'         `888.   .8'  `888   `Y88. `888'  d8P'  `Y8b   d8P'  `Y8b  `888b.     `8'
- *  888           `888. .8'    888   .d88'  888  888          888      888  8 `88b.    8
- *  888            `888.8'     888ooo88P'   888  888          888      888  8   `88b.  8
- *  888             `888'      888`88b.     888  888          888      888  8     `88b.8
- *  888       o      888       888  `88b.   888  `88b    ooo  `88b    d88'  8       `888
- * o888ooooood8     o888o     o888o  o888o o888o  `Y8bood8P'   `Y8bood8P'  o8o        `8
+ * libxposed API 102 模块入口。
  *
- *  @author Tomakino
- *  @date 2026/05/03
+ * 除常规包加载外，实现 API 102 原生 Hot Reload 生命周期：
+ * - onHotReloading: 旧 classloader 中同步释放 Hook/UI/Binder/线程并保存宿主 Application；
+ * - onHotReloaded: 新 classloader 中撤销残余旧 HookHandle，并基于同一宿主进程直接重新挂载。
+ *
+ * 保存状态只传递 Android 宿主创建的 Application，不传递任何旧模块 classloader 创建的对象。
  */
 @Keep
 class ModuleEntry : XposedModule() {
@@ -32,22 +30,26 @@ class ModuleEntry : XposedModule() {
     companion object {
         private const val TAG = "ModuleEntry"
 
-        private val scopes = listOf(
+        private val scopes = setOf(
             PackageNames.APPLICATION,
             PackageNames.SYSTEM_UI,
         )
 
         lateinit var instance: ModuleEntry
+            private set
     }
+
+    @Volatile
+    private var activePackageName: String? = null
 
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
         super.onPackageReady(param)
-        YLog.info(TAG, "onPackageReady: packageName=${param.packageName}")
+        YLog.info(TAG, "onPackageReady: packageName=" + param.packageName)
     }
 
     override fun onSystemServerStarting(param: XposedModuleInterface.SystemServerStartingParam) {
         super.onSystemServerStarting(param)
-        YLog.info(TAG, "onSystemServerStarting: classLoader=${param.classLoader}")
+        YLog.info(TAG, "onSystemServerStarting: classLoader=" + param.classLoader)
     }
 
     override fun onModuleLoaded(param: XposedModuleInterface.ModuleLoadedParam) {
@@ -55,7 +57,8 @@ class ModuleEntry : XposedModule() {
         YLog.init(this)
         YLog.info(
             TAG,
-            "onModuleLoaded: isSystemServer=${param.isSystemServer}, processName=${param.processName}"
+            "onModuleLoaded: isSystemServer=" + param.isSystemServer +
+                    ", processName=" + param.processName
         )
     }
 
@@ -66,11 +69,90 @@ class ModuleEntry : XposedModule() {
             return
         }
 
+        activePackageName = packageName
         YLog.info(TAG, "onPackageLoaded: $packageName")
 
         GeneralHooker.hook(this, param)
-        when (packageName) {
-            PackageNames.SYSTEM_UI -> SystemUIHooker.hook(this, param)
+        if (packageName == PackageNames.SYSTEM_UI) {
+            SystemUIHooker.hook(this, param)
+        }
+    }
+
+    /**
+     * API 102：旧模块代码即将被替换。
+     *
+     * 返回 true 后框架继续热重载。清理中的单点异常会记录，但不会让已经部分释放的旧代际
+     * 留在半初始化状态；新代际会重新建立全部运行时对象。
+     */
+    override fun onHotReloading(param: XposedModuleInterface.HotReloadingParam): Boolean {
+        val packageName = activePackageName
+        YLog.info(TAG, "onHotReloading: package=$packageName")
+
+        val application: Application? = when (packageName) {
+            PackageNames.SYSTEM_UI -> {
+                val app = SystemUIHooker.appContext ?: GeneralHooker.appContext
+                if (app != null) {
+                    runCatching { SystemUIHooker.prepareHotReload() }
+                        .onFailure { YLog.error(TAG, "SystemUI hot reload cleanup failed", it) }
+                    runCatching { GeneralHooker.prepareHotReload() }
+                        .onFailure { YLog.error(TAG, "General hot reload cleanup failed", it) }
+                }
+                app
+            }
+
+            PackageNames.APPLICATION -> {
+                val app = GeneralHooker.appContext
+                if (app != null) {
+                    runCatching { GeneralHooker.prepareHotReload() }
+                        .onFailure { YLog.error(TAG, "App hot reload cleanup failed", it) }
+                }
+                app
+            }
+
+            else -> null
+        }
+
+        if (application == null) {
+            YLog.warning(TAG, "Rejecting hot reload: host Application is not ready")
+            return false
+        }
+
+        // Application 来自宿主 classloader，可安全跨模块代际传递。
+        param.setSavedInstanceState(application)
+        YLog.info(TAG, "Old generation ready for hot reload")
+        return true
+    }
+
+    /**
+     * API 102：新模块代码已载入，直接在当前宿主进程恢复。
+     */
+    override fun onHotReloaded(param: XposedModuleInterface.HotReloadedParam) {
+        instance = this
+        YLog.init(this)
+
+        // 包括未被各组件显式记录的 Hook（例如 Application.onCreate 早期 Hook）。
+        param.oldHookHandles.forEach { handle ->
+            runCatching { handle.unhook() }
+                .onFailure { YLog.error(TAG, "Failed to unhook old generation handle", it) }
+        }
+
+        val application = param.savedInstanceState as? Application
+        if (application == null) {
+            YLog.error(TAG, "Hot reload restored without a host Application")
+            return
+        }
+
+        val packageName = application.packageName
+        activePackageName = packageName
+
+        YLog.info(
+            TAG,
+            "onHotReloaded: package=$packageName, oldHooks=" + param.oldHookHandles.size
+        )
+
+        GeneralHooker.hookAfterHotReload(this, application)
+        if (packageName == PackageNames.SYSTEM_UI) {
+            SystemUIHooker.hookAfterHotReload(this, application)
         }
     }
 }

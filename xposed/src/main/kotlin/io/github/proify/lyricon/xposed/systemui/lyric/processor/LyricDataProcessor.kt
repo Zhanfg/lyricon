@@ -36,6 +36,7 @@ object LyricDataProcessor {
     /** 注册后置加工插件列表 */
     private val postProcessors by lazy {
         listOf(
+            ClassicTranslationPostProcessor(),
             AiTranslationPostProcessor(aiConfigProvider)
         ).sortedBy { it.priority }
     }

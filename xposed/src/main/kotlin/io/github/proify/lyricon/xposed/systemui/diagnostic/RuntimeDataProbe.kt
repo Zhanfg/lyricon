@@ -41,6 +41,12 @@ object RuntimeDataProbe {
     @Volatile
     private var lyricSummary: String? = null
 
+    @Volatile
+    private var nativeLyricStage: String = "NONE"
+
+    @Volatile
+    private var nativeLyricDetail: String? = null
+
     fun markSubscriberConnecting() {
         updateSubscriber(SubscriberState.CONNECTING)
     }
@@ -55,6 +61,29 @@ object RuntimeDataProbe {
 
     fun markSubscriberTimeout() {
         updateSubscriber(SubscriberState.TIMEOUT)
+    }
+
+    fun markNativeLyricSeen(packageName: String) {
+        nativeLyricStage = "SEEN"
+        nativeLyricDetail = packageName
+        logSnapshot("native_seen")
+    }
+
+    fun markNativeLyricActive(packageName: String, lineCount: Int) {
+        nativeLyricStage = "ACTIVE"
+        nativeLyricDetail = packageName + " / lines=" + lineCount
+        logSnapshot("native_active")
+    }
+
+    fun markNativeLyricError(code: String, detail: String? = null) {
+        nativeLyricStage = "ERROR:" + code
+        nativeLyricDetail = detail?.take(96)
+        logSnapshot("native_error")
+    }
+
+    fun markNativeLyricInactive() {
+        nativeLyricStage = "NONE"
+        nativeLyricDetail = null
     }
 
     fun markActiveProvider(providerInfo: ProviderInfo?) {
@@ -93,6 +122,8 @@ object RuntimeDataProbe {
         activeProviderPackage = null
         lyricKind = null
         lyricSummary = null
+        nativeLyricStage = "NONE"
+        nativeLyricDetail = null
     }
 
     fun snapshot(): Snapshot {
@@ -106,6 +137,8 @@ object RuntimeDataProbe {
             providerRegistrationStage = central.providerRegistrationStage,
             providerRegistrationErrorCode = central.providerRegistrationErrorCode,
             providerRegistrationErrorDetail = central.providerRegistrationErrorDetail,
+            nativeLyricStage = nativeLyricStage,
+            nativeLyricDetail = nativeLyricDetail,
             activeProviderPackage = activeProviderPackage,
             lyricKind = lyricKind,
             lyricSummary = lyricSummary
@@ -130,6 +163,8 @@ object RuntimeDataProbe {
                     " registerStage=" + s.providerRegistrationStage +
                     " registerError=" + (s.providerRegistrationErrorCode ?: "none") +
                     " registerDetail=" + (s.providerRegistrationErrorDetail ?: "") +
+                    " nativeStage=" + s.nativeLyricStage +
+                    " nativeDetail=" + (s.nativeLyricDetail ?: "") +
                     " active=" + (s.activeProviderPackage ?: "none") +
                     " lyric=" + (s.lyricKind ?: "none") +
                     " detail=" + (s.lyricSummary ?: "")
@@ -145,6 +180,8 @@ object RuntimeDataProbe {
         val providerRegistrationStage: String,
         val providerRegistrationErrorCode: String?,
         val providerRegistrationErrorDetail: String?,
+        val nativeLyricStage: String,
+        val nativeLyricDetail: String?,
         val activeProviderPackage: String?,
         val lyricKind: String?,
         val lyricSummary: String?
@@ -172,10 +209,17 @@ object RuntimeDataProbe {
                 }
             }
             val provider = "P" + providerCount
+            val native = when {
+                nativeLyricStage == "ACTIVE" -> "N✓"
+                nativeLyricStage == "SEEN" -> "N…"
+                nativeLyricStage.startsWith("ERROR:") -> "N!" + nativeLyricStage.substringAfter(':')
+                else -> "N0"
+            }
             val active = if (activeProviderPackage != null) "A✓" else "A×"
             val lyric = if (lyricKind != null) "L✓" else "L×"
-            return "UI✓ " + central + " " + subscriber + " " + registration +
-                    " " + provider + " " + active + " " + lyric
+            return "C" + if (centralInitialized) "✓" else "×" +
+                    " " + subscriber + " " + registration +
+                    " " + provider + " " + native + " " + active + " " + lyric
         }
     }
 }

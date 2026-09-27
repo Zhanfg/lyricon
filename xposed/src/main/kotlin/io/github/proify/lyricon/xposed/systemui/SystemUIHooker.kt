@@ -27,6 +27,7 @@ import io.github.proify.lyricon.xposed.ModuleEntry
 import io.github.proify.lyricon.xposed.hook.PackageHooker
 import io.github.proify.lyricon.xposed.logger.YLog
 import io.github.proify.lyricon.xposed.systemui.ai.translate.AiTranslator
+import io.github.proify.lyricon.xposed.systemui.translate.ClassicTranslator
 import io.github.proify.lyricon.xposed.systemui.diagnostic.RuntimeDataProbe
 import io.github.proify.lyricon.xposed.systemui.hook.OplusCapsuleHooker
 import io.github.proify.lyricon.xposed.systemui.hook.StatusBarColorMonitor
@@ -166,6 +167,7 @@ object SystemUIHooker : PackageHooker() {
 
         StatusBarColorMonitor.initialize(module, classLoader)
         AiTranslator.init(context)
+        ClassicTranslator.init(context)
         SystemUIMediaUtils.init(context)
         NativeLyricInfoBridge.init()
         StatusBarViewResolver.init(module, context)
@@ -252,7 +254,13 @@ object SystemUIHooker : PackageHooker() {
             }
 
             onCommand(AppBridgeConstants.REQUEST_CLEAR_TRANSLATION_DB) {
-                AiTranslator.clearCache { LyricDataHub.reprocessCurrentSong() }
+                var remaining = 2
+                val done = {
+                    remaining--
+                    if (remaining == 0) LyricDataHub.reprocessCurrentSong()
+                }
+                AiTranslator.clearCache(done)
+                ClassicTranslator.clearCache(done)
             }
         }
     }
@@ -310,6 +318,7 @@ object SystemUIHooker : PackageHooker() {
         NotificationCoverHelper.destroy()
         SystemUIMediaUtils.release()
         ScreenStateMonitor.release()
+        ClassicTranslator.release()
         AiTranslator.release()
 
         // 销毁本进程 Subscriber，再关闭内置 Central 的 Binder 连接。

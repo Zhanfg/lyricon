@@ -7,6 +7,7 @@
 package io.github.proify.lyricon.xposed
 
 import android.app.Application
+import android.util.Pair
 import androidx.annotation.Keep
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface
@@ -117,8 +118,9 @@ class ModuleEntry : XposedModule() {
             return false
         }
 
-        // Application 来自宿主 classloader，可安全跨模块代际传递。
-        param.setSavedInstanceState(application)
+        // 与 libxposed API 102 官方示例一致：只保存宿主包名 + 宿主 ClassLoader。
+        // 两者均不由旧模块 classloader 创建，可安全跨模块代际传递。
+        param.setSavedInstanceState(Pair.create(application.packageName, application.classLoader))
         YLog.info(TAG, "Old generation ready for hot reload")
         return true
     }
@@ -136,13 +138,27 @@ class ModuleEntry : XposedModule() {
                 .onFailure { YLog.error(TAG, "Failed to unhook old generation handle", it) }
         }
 
-        val application = param.savedInstanceState as? Application
-        if (application == null) {
-            YLog.error(TAG, "Hot reload restored without a host Application")
+        val saved = param.savedInstanceState as? Pair<*, *>
+        val packageName = saved?.first as? String
+        val restoredClassLoader = saved?.second as? ClassLoader
+        if (packageName == null || restoredClassLoader == null) {
+            YLog.error(TAG, "Hot reload restored without host package/ClassLoader state")
             return
         }
 
-        val packageName = application.packageName
+        val application = currentApplication()
+        if (application == null) {
+            YLog.error(TAG, "Hot reload restored but current Application is unavailable")
+            return
+        }
+        if (application.packageName != packageName) {
+            YLog.error(
+                TAG,
+                "Hot reload package mismatch: saved=$packageName, current=" + application.packageName
+            )
+            return
+        }
+
         activePackageName = packageName
 
         YLog.info(
@@ -150,9 +166,24 @@ class ModuleEntry : XposedModule() {
             "onHotReloaded: package=$packageName, oldHooks=" + param.oldHookHandles.size
         )
 
-        GeneralHooker.hookAfterHotReload(this, application)
+        GeneralHooker.hookAfterHotReload(this, application, restoredClassLoader)
         if (packageName == PackageNames.SYSTEM_UI) {
-            SystemUIHooker.hookAfterHotReload(this, application)
+            SystemUIHooker.hookAfterHotReload(this, application, restoredClassLoader)
         }
+    }
+
+    /**
+     * 从当前 Android 进程取宿主 Application。
+     * 通过反射调用 framework 隐藏 API，避免把 Application 本身放进热重载 saved state。
+     */
+    private fun currentApplication(): Application? = runCatching {
+        val activityThread = Class.forName("android.app.ActivityThread")
+        val method = activityThread.getDeclaredMethod("currentApplication").apply {
+            isAccessible = true
+        }
+        method.invoke(null) as? Application
+    }.getOrElse { error ->
+        YLog.error(TAG, "Unable to resolve current Application after hot reload", error)
+        null
     }
 }

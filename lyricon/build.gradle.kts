@@ -49,8 +49,10 @@ configure<ApplicationExtension> {
     }
 
     buildTypes {
+        // Debug 构建使用 Android Gradle Plugin 的默认 debug keystore。
+        // 这样 fork / CI 不需要私有 release.jks，也不会影响正式发布签名。
         getByName("debug") {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.getByName("debug")
         }
         getByName("release") {
             signingConfig = signingConfigs.getByName("release")

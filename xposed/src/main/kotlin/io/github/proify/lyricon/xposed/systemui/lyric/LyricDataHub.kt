@@ -54,6 +54,10 @@ object LyricDataHub : ActivePlayerListener {
         listeners.remove(listener)
     }
 
+    /** 当前活跃 Provider 的只读快照，供本地 MediaMetadata fallback 判定优先级。 */
+    fun currentProviderInfo(): ProviderInfo? = providerInfo
+
+
     /**
      * API 102 热重载前同步停止旧代际歌词流水线并清空状态。
      *

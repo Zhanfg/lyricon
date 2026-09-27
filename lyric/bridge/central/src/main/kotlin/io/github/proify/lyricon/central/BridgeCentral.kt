@@ -25,7 +25,8 @@ import io.github.proify.lyricon.central.internal.util.ScreenStateMonitor
 object BridgeCentral {
 
     /** 全局应用 Context，用于广播和注册接收器 */
-    private lateinit var context: Context
+    @Volatile
+    private var context: Context? = null
 
     /** 用于接收中央控制广播的接收器实例 */
     private val receiver = CentralReceiver
@@ -37,12 +38,14 @@ object BridgeCentral {
      *
      * @param appContext 应用级 Context
      */
+    @Synchronized
     fun initialize(appContext: Context) {
-        if (::context.isInitialized) return
-        context = appContext.applicationContext
-        ScreenStateMonitor.initialize(appContext)
+        if (context != null) return
+        val app = appContext.applicationContext
+        context = app
+        ScreenStateMonitor.initialize(app)
         ContextCompat.registerReceiver(
-            context,
+            app,
             receiver,
             IntentFilter().apply {
                 addAction(CentralConstants.ACTION_REGISTER_PROVIDER)
@@ -58,7 +61,22 @@ object BridgeCentral {
      * 通知系统或其他组件中央模块已完成初始化。
      */
     fun sendBootCompleted() {
-        if (!::context.isInitialized) return
-        context.sendBroadcast(Intent(CentralConstants.ACTION_CENTRAL_BOOT_COMPLETED))
+        val app = context ?: return
+        app.sendBroadcast(Intent(CentralConstants.ACTION_CENTRAL_BOOT_COMPLETED))
+    }
+
+    /**
+     * 停止内置 Central。
+     *
+     * API 102 热重载时先注销广播并关闭所有 Binder 连接。新模块代际初始化后会再次
+     * 发送 ACTION_CENTRAL_BOOT_COMPLETED，使新版 Provider/Subscriber 自动重新注册。
+     */
+    @Synchronized
+    fun release() {
+        val app = context ?: return
+        runCatching { app.unregisterReceiver(receiver) }
+        CentralRuntime.release()
+        ScreenStateMonitor.release()
+        context = null
     }
 }

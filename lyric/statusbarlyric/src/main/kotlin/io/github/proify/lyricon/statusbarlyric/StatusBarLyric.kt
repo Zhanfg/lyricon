@@ -318,6 +318,37 @@ class StatusBarLyric(
 
     // --- 公开 API ---
 
+    /**
+     * 显式释放运行时回调与动画。
+     *
+     * 状态栏歌词通常随 SystemUI 进程长期存在；libxposed API 102 热重载时旧 View
+     * 会被主动移除，因此必须在移除前停止 Handler、ViewPropertyAnimator、LayoutTransition
+     * 和歌词帧动画，避免旧模块 classloader 被主线程消息队列继续持有。
+     */
+    fun release() {
+        lyricTimeoutTask?.let { mainHandler.removeCallbacks(it) }
+        lyricTimeoutTask = null
+        mainHandler.removeCallbacksAndMessages(null)
+
+        animate().setListener(null).cancel()
+        clearAnimation()
+        runCatching { layoutTransition?.cancel() }
+        runCatching { singleLayoutTransition.cancel() }
+        runCatching { singleVisibilityLayoutTransition.cancel() }
+        layoutTransition = null
+
+        textView.setOnHierarchyChangeListener(null)
+        textView.lyricCountChangeListeners.remove(lyricCountChangeListener)
+        textView.eventListener = null
+        textView.reset()
+
+        logoView.clearProgress()
+
+        gestureListener = null
+        onPlayingChanged = null
+        setOnClickListener(null)
+    }
+
     fun updateStyle(style: LyricStyle) {
         triggerSingleTransition()
         currentStyle = style

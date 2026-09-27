@@ -71,7 +71,18 @@ data class TextStyle(
         const val TRANSITION_CONFIG_NONE = "none"
 
         // ===== AI 连接配置 keys 已迁移至 :lyric:ai（AiConfig） =====
-        // ===== AI 歌词翻译（功能级配置）=====
+        // ===== 歌词翻译（功能级配置）=====
+        const val KEY_TRANSLATION_ENGINE = "translation_engine"
+        const val KEY_TRANSLATION_GOOGLE_API_KEY = "translation_google_api_key"
+        const val KEY_TRANSLATION_MICROSOFT_API_KEY = "translation_microsoft_api_key"
+        const val KEY_TRANSLATION_MICROSOFT_REGION = "translation_microsoft_region"
+
+        const val TRANSLATION_ENGINE_OFF = "off"
+        const val TRANSLATION_ENGINE_GOOGLE = "google"
+        const val TRANSLATION_ENGINE_MICROSOFT = "microsoft"
+        const val TRANSLATION_ENGINE_AI = "ai"
+
+        // 兼容旧版 AI 翻译开关；新 UI 使用 KEY_TRANSLATION_ENGINE。
         const val KEY_AI_TRANSLATION_ENABLED = "ai_translation_enabled"
         const val KEY_AI_TRANSLATION_TARGET_LANGUAGE = "ai_translation_target_language"
         const val KEY_AI_TRANSLATION_TARGET_LANGUAGE_CODE = "ai_translation_target_language_code"
@@ -95,7 +106,8 @@ data class TextStyle(
         const val TRANSLATION_ONLY: Boolean = false
         const val TRANSLATION_DISABLE: Boolean = false
 
-        // ===== AI 歌词翻译（功能级默认值）=====
+        // ===== 歌词翻译（功能级默认值）=====
+        const val TRANSLATION_ENGINE: String = TRANSLATION_ENGINE_OFF
         const val AI_TRANSLATION_ENABLED: Boolean = false
         val AI_TRANSLATION_TARGET_LANGUAGE_DISPLAY_NAME: String
             get() {

@@ -278,7 +278,7 @@ object SystemUIHooker : PackageHooker() {
         StatusBarDisableHooker.release()
 
         runOnMainThreadBlocking {
-            LyricControlPopup.dismiss()
+            LyricControlPopup.destroyForHotReload()
             StatusBarViewManager.destroyAllNow()
             LyricViewController.destroy()
         }

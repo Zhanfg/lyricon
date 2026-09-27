@@ -47,6 +47,10 @@ abstract class PackageHooker {
     private val isAppCreateHooked = AtomicBoolean(false)
     private val isAttached = AtomicBoolean(false)
 
+    /** 当前代际是否通过 API 102 热重载重新挂载。 */
+    protected var isHotReloadAttach: Boolean = false
+        private set
+
     fun isMainProcess(): Boolean = runtimeProcessName == packageName
 
     /**
@@ -152,6 +156,7 @@ abstract class PackageHooker {
         }
 
         this.module = module
+        isHotReloadAttach = false
         runtimePackageName = param.packageName
         runtimeProcessName = param.applicationInfo.processName
         runtimeClassLoader = param.defaultClassLoader
@@ -172,6 +177,7 @@ abstract class PackageHooker {
         }
 
         this.module = module
+        isHotReloadAttach = true
         runtimePackageName = application.packageName
         runtimeProcessName = Application.getProcessName()
         runtimeClassLoader = application.classLoader

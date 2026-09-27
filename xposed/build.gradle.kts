@@ -23,6 +23,16 @@ configure<LibraryExtension> {
             "APP_PACKAGE_NAME",
             "\"${rootProject.extra["appPackageName"] as String}\""
         )
+        buildConfigField(
+            "long",
+            "APP_VERSION_CODE",
+            "${rootProject.extra["appVersionCode"] as Int}L"
+        )
+        buildConfigField(
+            "String",
+            "APP_VERSION_NAME",
+            "\"${rootProject.extra["appVersionName"] as String}\""
+        )
     }
 
     buildTypes {

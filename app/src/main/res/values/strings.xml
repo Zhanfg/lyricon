@@ -38,9 +38,9 @@
     <string name="activity_basic_settings">基本设置</string>
     <string name="activity_app_style_manager">应用样式管理</string>
     <string name="activity_lyric_provider_services">歌词提供服务</string>
-    <string name="activity_ai_laboratory">AI 实验室</string>
-    <string name="item_ai_laboratory">AI 实验室</string>
-    <string name="item_summary_ai_laboratory">配置 AI 翻译与歌词解读</string>
+    <string name="activity_ai_laboratory">AI 与翻译</string>
+    <string name="item_ai_laboratory">AI 与翻译</string>
+    <string name="item_summary_ai_laboratory">Google / Microsoft / AI 翻译与歌词解读</string>
     <string name="activity_open_source_licenses">开放源代码许可</string>
     <string name="item_basic_settings">基本设置</string>
     <string name="item_summary_basic_settings">歌词位置、大小及状态栏显示规则</string>

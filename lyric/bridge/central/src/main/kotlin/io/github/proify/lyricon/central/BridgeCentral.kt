@@ -58,15 +58,26 @@ object BridgeCentral {
     data class Diagnostics(
         val initialized: Boolean,
         val providerCount: Int,
-        val subscriberCount: Int
+        val subscriberCount: Int,
+        val providerRegistrationAttempts: Int,
+        val providerRegistrationStage: String,
+        val providerRegistrationErrorCode: String?,
+        val providerRegistrationErrorDetail: String?
     )
 
     /** 只读运行时诊断快照，不修改 Central 状态。 */
-    fun diagnostics(): Diagnostics = Diagnostics(
-        initialized = context != null,
-        providerCount = CentralRuntime.providerCount(),
-        subscriberCount = CentralRuntime.subscriberCount()
-    )
+    fun diagnostics(): Diagnostics {
+        val registration = CentralRuntime.registrationDiagnostics()
+        return Diagnostics(
+            initialized = context != null,
+            providerCount = CentralRuntime.providerCount(),
+            subscriberCount = CentralRuntime.subscriberCount(),
+            providerRegistrationAttempts = registration.attempts,
+            providerRegistrationStage = registration.stage.name,
+            providerRegistrationErrorCode = registration.errorCode,
+            providerRegistrationErrorDetail = registration.errorDetail
+        )
+    }
 
     /**
      * 发送中央启动完成广播。

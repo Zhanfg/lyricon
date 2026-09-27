@@ -184,14 +184,16 @@ fun AiTranslationPreference(preferences: SharedPreferences) {
                 startAction = { IconActions(painterResource(R.drawable.vpn_key_24px)) },
                 maxLines = 1,
             )
+            val region by rememberStringPreference(
+                preferences,
+                TextStyle.KEY_TRANSLATION_MICROSOFT_REGION,
+                null
+            )
             StringInputPreference(
                 preferences = preferences,
                 key = TextStyle.KEY_TRANSLATION_MICROSOFT_REGION,
                 title = stringResource(R.string.item_translation_microsoft_region),
-                summary = preferences.getString(
-                    TextStyle.KEY_TRANSLATION_MICROSOFT_REGION,
-                    null
-                )?.takeIf { it.isNotBlank() }
+                summary = region?.takeIf { it.isNotBlank() }
                     ?: stringResource(R.string.item_translation_microsoft_region_optional),
                 dialogSummary = stringResource(R.string.dialog_summary_translation_microsoft_region),
                 startAction = { IconActions(painterResource(R.drawable.ic_language)) },

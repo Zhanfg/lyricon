@@ -332,9 +332,11 @@ class StatusBarLyric(
 
         animate().setListener(null).cancel()
         clearAnimation()
-        runCatching { layoutTransition?.cancel() }
-        runCatching { singleLayoutTransition.cancel() }
-        runCatching { singleVisibilityLayoutTransition.cancel() }
+        // LayoutTransition.cancel() 不是公开 Android SDK API，不能直接调用。
+        // 先禁用所有可控 transition type，再从 ViewGroup 解绑 transition；
+        // 随后的 View detach/remove 会终止其 Animator 与 View 引用链。
+        singleLayoutTransition.disableTransitionType(LayoutTransition.CHANGING)
+        singleVisibilityLayoutTransition.disableTransitionType(LayoutTransition.CHANGING)
         layoutTransition = null
 
         textView.setOnHierarchyChangeListener(null)

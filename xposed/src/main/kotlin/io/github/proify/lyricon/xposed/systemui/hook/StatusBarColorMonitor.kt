@@ -121,6 +121,23 @@ object StatusBarColorMonitor {
     }
 
     /**
+     * API 102 热重载前停止策略并释放旧代际引用。
+     */
+    fun release() {
+        runCatching { activeStrategy?.onDeactivate() }
+        activeStrategy = null
+        listeners.clear()
+        luminanceCache.clear()
+        statusBarRoot = null
+        clockView = null
+        lastFingerprint = null
+        module = null
+        classLoader = null
+        initialized = false
+        YLog.info(TAG, "Released")
+    }
+
+    /**
      * 绑定状态栏根视图
      *
      * @param root 状态栏根视图;传 null 清除绑定

@@ -16,6 +16,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -90,6 +91,12 @@ internal class AiTranslationScheduler(
                 Log.d(TAG, "Cancelled pending AI translation: ${job.songName}")
             }
         }
+    }
+
+    /** 停止 pending/running 翻译任务。用于 API 102 热重载。 */
+    fun shutdown() {
+        cancelPending()
+        scope.cancel()
     }
 
     private fun trimPendingLocked() {

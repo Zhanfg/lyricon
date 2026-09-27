@@ -75,6 +75,10 @@ object StatusBarViewManager {
         check(Thread.currentThread() === MAIN_LOOPER.thread) {
             "destroyAllNow must run on the main thread"
         }
+
+        // 清掉本管理器之前 post 到主线程但尚未执行的旧代际 UI 更新。
+        mainHandler.removeCallbacksAndMessages(null)
+
         val snapshot = _controllers.toList()
         _controllers.clear()
         snapshot.forEach { controller ->

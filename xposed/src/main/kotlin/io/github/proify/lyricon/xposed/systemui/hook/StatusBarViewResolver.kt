@@ -39,6 +39,8 @@ object StatusBarViewResolver {
 
     private const val TAG = "StatusBarViewResolver"
     private const val MAX_SCAN_NODES = 512
+    private const val PHONE_STATUS_BAR_VIEW =
+        "com.android.systemui.statusbar.phone.PhoneStatusBarView"
 
     /**
      * 状态栏视图获取成功的回调定义
@@ -50,7 +52,11 @@ object StatusBarViewResolver {
     private val hookHandles = CopyOnWriteArrayList<XposedInterface.HookHandle>()
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    @Volatile
+    private var pendingResolvedView: WeakReference<ViewGroup>? = null
+
     private var isInitialized = false
+    private var isPackageReadyHookInstalled = false
 
     /**
      * 订阅状态栏视图。
@@ -61,6 +67,12 @@ object StatusBarViewResolver {
         if (!registry.contains(listener)) {
             registry.add(listener)
         }
+
+        val pending = pendingResolvedView?.get() ?: return
+        pendingResolvedView = null
+        mainHandler.post {
+            notifyResolved(pending, "package_ready_pending")
+        }
     }
 
     /**
@@ -68,6 +80,66 @@ object StatusBarViewResolver {
      */
     fun unsubscribe(listener: OnViewResolvedListener) {
         registry.remove(listener)
+    }
+
+    /**
+     * libxposed API 102 / ColorOS 16 主解析入口。
+     *
+     * 在 onPackageReady() 阶段安装 PhoneStatusBarView.onFinishInflate() Hook。
+     * OnePlus / ColorOS 16 的已验证实现使用的就是这一生命周期入口；这样可以在
+     * 状态栏真正构建完成的瞬间直接拿到 View，而不依赖 layout 名称或窗口扫描。
+     */
+    fun installPackageReadyHook(
+        module: XposedModule,
+        classLoader: ClassLoader
+    ) {
+        if (isPackageReadyHookInstalled) return
+
+        try {
+            val phoneStatusBarClass = Class.forName(
+                PHONE_STATUS_BAR_VIEW,
+                false,
+                classLoader
+            )
+            val method = phoneStatusBarClass.getDeclaredMethod("onFinishInflate")
+
+            val handle = module.hook(method)
+                .setId("lyricon:statusbar:phone-finish-inflate")
+                .intercept(object : XposedInterface.Hooker {
+                    override fun intercept(chain: XposedInterface.Chain): Any? {
+                        val result = chain.proceed()
+                        val view = chain.thisObject as? ViewGroup
+                        if (view != null) {
+                            mainHandler.post {
+                                captureResolved(
+                                    view,
+                                    "phone_status_bar_onFinishInflate"
+                                )
+                            }
+                        } else {
+                            YLog.warning(
+                                TAG,
+                                "PhoneStatusBarView.onFinishInflate thisObject is not ViewGroup"
+                            )
+                        }
+                        return result
+                    }
+                })
+
+            hookHandles.add(handle)
+            isPackageReadyHookInstalled = true
+            YLog.info(
+                TAG,
+                "API102 PhoneStatusBarView.onFinishInflate hook installed: " +
+                        phoneStatusBarClass.name
+            )
+        } catch (t: Throwable) {
+            YLog.error(
+                TAG,
+                "Unable to install API102 PhoneStatusBarView.onFinishInflate hook",
+                t
+            )
+        }
     }
 
     /**
@@ -119,7 +191,9 @@ object StatusBarViewResolver {
         hookHandles.clear()
         registry.clear()
         resolvedRoots.clear()
+        pendingResolvedView = null
         isInitialized = false
+        isPackageReadyHookInstalled = false
         YLog.info(TAG, "Released")
     }
 
@@ -226,7 +300,20 @@ object StatusBarViewResolver {
     private fun resolveCandidate(candidate: View, source: String) {
         val root = (candidate.rootView ?: candidate) as? ViewGroup ?: return
         val statusBar = findStatusBarView(root) ?: return
-        notifyResolved(statusBar, source)
+        captureResolved(statusBar, source)
+    }
+
+    private fun captureResolved(view: ViewGroup, source: String) {
+        if (registry.isEmpty()) {
+            pendingResolvedView = WeakReference(view)
+            YLog.info(
+                TAG,
+                "Status bar captured before subscriber via " + source + ": " +
+                        view.javaClass.name
+            )
+            return
+        }
+        notifyResolved(view, source)
     }
 
     /**

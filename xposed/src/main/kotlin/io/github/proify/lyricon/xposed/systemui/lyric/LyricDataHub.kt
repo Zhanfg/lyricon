@@ -17,6 +17,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.runBlocking
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -48,6 +51,29 @@ object LyricDataHub : ActivePlayerListener {
 
     fun removeListener(listener: ActivePlayerListener) {
         listeners.remove(listener)
+    }
+
+    /**
+     * API 102 热重载前同步停止旧代际歌词流水线并清空状态。
+     *
+     * 这里必须等待 activePipelineJob 真正退出，避免旧模块 classloader 在
+     * onHotReloading 返回后仍被后台歌词/AI 后处理协程持有。
+     */
+    fun release() {
+        val pipeline = activePipelineJob
+        activePipelineJob = null
+
+        runBlocking {
+            pipeline?.cancelAndJoin()
+        }
+        scope.cancel()
+
+        listeners.clear()
+        cachedRawSong = null
+        providerInfo = null
+        lastDispatchSongId = 0
+        versionCounter.incrementAndGet()
+        Log.i(TAG, "Released")
     }
 
     /**

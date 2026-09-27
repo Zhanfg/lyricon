@@ -217,8 +217,7 @@ object RuntimeDataProbe {
             }
             val active = if (activeProviderPackage != null) "A✓" else "A×"
             val lyric = if (lyricKind != null) "L✓" else "L×"
-            return "C" + if (centralInitialized) "✓" else "×" +
-                    " " + subscriber + " " + registration +
+            return central + " " + subscriber + " " + registration +
                     " " + provider + " " + native + " " + active + " " + lyric
         }
     }

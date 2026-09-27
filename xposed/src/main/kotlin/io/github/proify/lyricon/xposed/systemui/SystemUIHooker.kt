@@ -34,6 +34,7 @@ import io.github.proify.lyricon.xposed.systemui.hook.StatusBarViewResolver
 import io.github.proify.lyricon.xposed.systemui.hook.ViewVisibilityTracker
 import io.github.proify.lyricon.xposed.systemui.lyric.LyricDataHub
 import io.github.proify.lyricon.xposed.systemui.lyric.LyricPrefs
+import io.github.proify.lyricon.xposed.systemui.lyric.NativeLyricInfoBridge
 import io.github.proify.lyricon.xposed.systemui.lyric.LyricViewController
 import io.github.proify.lyricon.xposed.systemui.lyric.StatusBarViewController
 import io.github.proify.lyricon.xposed.systemui.lyric.StatusBarViewManager
@@ -165,6 +166,7 @@ object SystemUIHooker : PackageHooker() {
         StatusBarColorMonitor.initialize(module, classLoader)
         AiTranslator.init(context)
         SystemUIMediaUtils.init(context)
+        NativeLyricInfoBridge.init()
         StatusBarViewResolver.init(module, context)
     }
 
@@ -300,6 +302,7 @@ object SystemUIHooker : PackageHooker() {
             runCatching { current.unsubscribeActivePlayer(LyricDataHub) }
                 .onFailure { YLog.error(TAG, "Failed to unsubscribe LyricDataHub", it) }
         }
+        NativeLyricInfoBridge.release()
         LyricDataHub.release()
 
         // 媒体与 AI 后台任务可能持有旧模块对象，必须显式断开。

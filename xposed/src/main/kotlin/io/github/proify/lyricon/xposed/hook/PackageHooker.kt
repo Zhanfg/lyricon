@@ -170,7 +170,11 @@ abstract class PackageHooker {
      *
      * Application 和其 ClassLoader 属于宿主进程而非旧模块 classloader，可安全跨模块代际复用。
      */
-    fun hookAfterHotReload(module: XposedModule, application: Application) {
+    fun hookAfterHotReload(
+        module: XposedModule,
+        application: Application,
+        restoredClassLoader: ClassLoader = application.classLoader
+    ) {
         if (!isAttached.compareAndSet(false, true)) {
             YLog.info(TAG, "Already attached after hot reload")
             return
@@ -180,7 +184,7 @@ abstract class PackageHooker {
         isHotReloadAttach = true
         runtimePackageName = application.packageName
         runtimeProcessName = Application.getProcessName()
-        runtimeClassLoader = application.classLoader
+        runtimeClassLoader = restoredClassLoader
         runtimeApplicationClassName = application.javaClass.name
         appContext = application
 

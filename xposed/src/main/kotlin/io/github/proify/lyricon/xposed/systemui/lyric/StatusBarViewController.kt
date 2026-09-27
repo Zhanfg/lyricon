@@ -32,6 +32,7 @@ import io.github.proify.lyricon.lyric.style.BasicStyle
 import io.github.proify.lyricon.lyric.style.LyricStyle
 import io.github.proify.lyricon.statusbarlyric.StatusBarLyric
 import io.github.proify.lyricon.xposed.logger.YLog
+import io.github.proify.lyricon.xposed.systemui.diagnostic.RuntimeDataProbe
 import io.github.proify.lyricon.xposed.systemui.hook.ClockViewFinder
 import io.github.proify.lyricon.xposed.systemui.hook.OplusCapsuleHooker
 import io.github.proify.lyricon.xposed.systemui.hook.StatusBarColorMonitor
@@ -61,7 +62,8 @@ class StatusBarViewController(
         )
 
         private const val SHOW_INJECTION_PROBE = true
-        private const val PROBE_DURATION_MS = 8000L
+        private const val PROBE_DURATION_MS = 60_000L
+        private const val PROBE_REFRESH_MS = 500L
     }
 
     val context: Context = statusBarView.context.applicationContext
@@ -454,15 +456,10 @@ class StatusBarViewController(
         }
 
         val probe = TextView(parent.context).apply {
-            text = "LC✓"
-            textSize = 10f
+            textSize = 8f
             setTextColor(Color.WHITE)
-            setPadding(4.dp, 0, 4.dp, 0)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                setColor(0xCC2E7D32.toInt())
-                cornerRadius = 6.dp.toFloat()
-            }
+            setPadding(3.dp, 0, 3.dp, 0)
+            isSingleLine = true
             isClickable = false
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
@@ -476,14 +473,38 @@ class StatusBarViewController(
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
             )
-            mainHandler.postDelayed({
-                if (injectionProbe === probe) {
-                    (probe.parent as? ViewGroup)?.removeView(probe)
-                    injectionProbe = null
+
+            val startedAt = android.os.SystemClock.uptimeMillis()
+            fun refresh() {
+                if (injectionProbe !== probe) return
+
+                val snapshot = RuntimeDataProbe.snapshot()
+                probe.text = snapshot.compactLabel()
+                probe.background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    val color = when {
+                        snapshot.lyricKind != null -> 0xCC2E7D32.toInt()
+                        snapshot.subscriberState == RuntimeDataProbe.SubscriberState.TIMEOUT ||
+                                snapshot.subscriberState == RuntimeDataProbe.SubscriberState.DISCONNECTED ->
+                            0xCCC62828.toInt()
+                        snapshot.providerCount == 0 -> 0xCCEF6C00.toInt()
+                        else -> 0xCC455A64.toInt()
+                    }
+                    setColor(color)
+                    cornerRadius = 6.dp.toFloat()
                 }
-            }, PROBE_DURATION_MS)
+
+                val elapsed = android.os.SystemClock.uptimeMillis() - startedAt
+                if (elapsed < PROBE_DURATION_MS) {
+                    mainHandler.postDelayed({ refresh() }, PROBE_REFRESH_MS)
+                } else {
+                    (probe.parent as? ViewGroup)?.removeView(probe)
+                    if (injectionProbe === probe) injectionProbe = null
+                }
+            }
+            refresh()
         }.onFailure { error ->
-            YLog.error(TAG, "Failed to show injection probe", error)
+            YLog.error(TAG, "Failed to show data-path probe", error)
             injectionProbe = null
         }
     }

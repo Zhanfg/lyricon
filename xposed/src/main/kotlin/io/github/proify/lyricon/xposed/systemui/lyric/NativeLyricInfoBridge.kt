@@ -17,6 +17,7 @@ import io.github.proify.lyricon.lyric.model.RichLyricLine
 import io.github.proify.lyricon.lyric.model.Song
 import io.github.proify.lyricon.subscriber.ProviderInfo
 import io.github.proify.lyricon.xposed.logger.YLog
+import io.github.proify.lyricon.xposed.systemui.diagnostic.RuntimeDataProbe
 import io.github.proify.lyricon.xposed.systemui.util.SystemUIMediaUtils
 import org.json.JSONObject
 import kotlin.math.max
@@ -93,6 +94,7 @@ object NativeLyricInfoBridge : SystemUIMediaUtils.MediaControllerCallback {
         latestTrackKey = null
         latestMetadataTrackKey = null
         latestLyricFingerprint = null
+        RuntimeDataProbe.markNativeLyricInactive()
 
         val pkg = activePackage
         activePackage = null
@@ -117,6 +119,7 @@ object NativeLyricInfoBridge : SystemUIMediaUtils.MediaControllerCallback {
 
         pendingClear?.let(mainHandler::removeCallbacks)
         pendingClear = null
+        RuntimeDataProbe.markNativeLyricSeen(packageName)
 
         if (!canUseFallback(packageName)) {
             YLog.debug(TAG, "Central provider is active; skip native lyricInfo for " + packageName)
@@ -126,6 +129,10 @@ object NativeLyricInfoBridge : SystemUIMediaUtils.MediaControllerCallback {
         val parsed = runCatching {
             parseLyricInfo(metadata, lyricInfo, packageName)
         }.onFailure { error ->
+            RuntimeDataProbe.markNativeLyricError(
+                "P",
+                error.javaClass.simpleName + ": " + (error.message ?: "")
+            )
             YLog.error(TAG, "Failed to parse lyricInfo for " + packageName, error)
         }.getOrNull() ?: return
 
@@ -141,6 +148,10 @@ object NativeLyricInfoBridge : SystemUIMediaUtils.MediaControllerCallback {
 
         ensureNativeProvider(packageName)
         LyricDataHub.onSongChanged(parsed.song)
+        RuntimeDataProbe.markNativeLyricActive(
+            packageName,
+            parsed.song.lyrics?.size ?: 0
+        )
 
         controller.playbackState?.let {
             latestState = it
@@ -288,6 +299,7 @@ object NativeLyricInfoBridge : SystemUIMediaUtils.MediaControllerCallback {
         latestMetadataTrackKey = null
         latestLyricFingerprint = null
         activePackage = null
+        RuntimeDataProbe.markNativeLyricInactive()
         LyricDataHub.onSongChanged(null)
         LyricDataHub.onPlaybackStateChanged(false)
         LyricDataHub.onActiveProviderChanged(null)
